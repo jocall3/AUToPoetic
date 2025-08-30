@@ -1,4 +1,5 @@
 
+
 import React from 'react';
 import {
     CommandCenterIcon, CodeExplainerIcon, FeatureBuilderIcon, CodeMigratorIcon, ThemeDesignerIcon, SnippetVaultIcon,
@@ -32,7 +33,7 @@ interface RawFeature {
 export const RAW_FEATURES: RawFeature[] = [
     // --- Domain 1: Local Development & Testing Parity ---
     { id: "api-mock-generator", name: "API Mock Server", description: "Generate mock API data from a description and serve it locally.", icon: <ServerStackIcon />, category: "Local Dev" },
-    { id: "env-manager", name: ".env Manager", description: "A graphical interface for creating and managing .env files.", icon: <DocumentTextIcon />, category: "Local Dev" },
+    { id: "env-manager", name: ".env File Generator", description: "A graphical interface for creating and downloading .env files.", icon: <DocumentTextIcon />, category: "Local Dev" },
 
     // --- Domain 2: Performance & Optimization Intelligence ---
     { id: "performance-profiler", name: "AI Performance Profiler", description: "Analyze runtime traces and bundle stats with AI-powered advice.", icon: <ChartBarIcon />, category: "Performance & Auditing" },
@@ -56,16 +57,17 @@ export const RAW_FEATURES: RawFeature[] = [
     { id: "linter-formatter", name: "AI Code Formatter", description: "AI-powered, real-time code formatting.", icon: <CodeFormatterIcon />, category: "Core" },
     { id: "json-tree-navigator", name: "JSON Tree Navigator", description: "Navigate large JSON objects as a collapsible tree.", icon: <JsonTreeIcon />, category: "Core" },
     
+    { id: "feature-forge", name: "Feature Forge", description: "Use AI to create new tools and add them to your desktop.", icon: <CpuChipIcon />, category: "AI Tools" },
     { id: "ai-image-generator", name: "AI Image Generator", description: "Generate high-quality images from a text prompt.", icon: <ImageGeneratorIcon />, category: "AI Tools" },
     { id: "ai-code-explainer", name: "AI Code Explainer", description: "Get a structured analysis of code, including complexity.", icon: <CodeExplainerIcon />, category: "AI Tools" },
     { id: "ai-feature-builder", name: "AI Feature Builder", description: "Generate code, tests, and commit messages from a prompt or API schema.", icon: <FeatureBuilderIcon />, category: "AI Tools" },
+    { id: "ai-full-stack-builder", name: "AI Full-Stack Builder", description: "Generate a frontend component, backend cloud function, and database rules from a single prompt.", icon: <ServerStackIcon />, category: "AI Tools" },
     { id: "ai-personality-forge", name: "AI Personality Forge", description: "Architect, test, and save complex system prompts to create different 'AI personalities'.", icon: <SparklesIcon />, category: "AI Tools" },
     { id: "ai-code-migrator", name: "AI Code Migrator", description: "Translate code between languages & frameworks.", icon: <CodeMigratorIcon />, category: "AI Tools" },
     { id: "theme-designer", name: "AI Theme Designer", description: "Generate, fine-tune, and export UI color themes from a text description or image.", icon: <ThemeDesignerIcon />, category: "AI Tools" },
     { id: "one-click-refactor", name: "One-Click Refactor", description: "Apply common refactoring patterns to your code with a single click.", icon: <SparklesIcon />, category: "AI Tools" },
     { id: "ai-commit-generator", name: "AI Commit Message Generator", description: "Smart, conventional commits via AI.", icon: <CommitGeneratorIcon />, category: "AI Tools" },
     { id: "prompt-craft-pad", name: "Prompt Craft Pad", description: "Save, edit, and manage your custom AI prompts with variable testing.", icon: <PromptCraftPadIcon />, category: "AI Tools" },
-    { id: "screenshot-to-component", name: "Screen Recording to Feature", description: "Turn UI screen recordings into functional multi-component code.", icon: <ScreenshotToComponentIcon />, category: "AI Tools" },
     { id: "ai-style-transfer", name: "AI Code Style Transfer", description: "Rewrite code to match a specific style guide.", icon: <StyleTransferIcon />, category: "AI Tools" },
     { id: "ai-coding-challenge", name: "AI Coding Challenge Generator", description: "Generate unique coding exercises.", icon: <CodingChallengeIcon />, category: "AI Tools" },
     { id: "code-review-bot", name: "AI Code Review Bot", description: "Get an automated code review with one-click refactoring.", icon: <CodeReviewBotIcon />, category: "AI Tools" },

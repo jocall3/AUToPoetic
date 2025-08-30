@@ -62,6 +62,8 @@ const componentMap: Record<string, React.FC<any>> = {
     'iam-policy-generator': lazyWithRetry(() => import('./IamPolicyGenerator.tsx'), 'IamPolicyGenerator'),
     'iam-policy-visualizer': lazyWithRetry(() => import('./IamPolicyVisualizer.tsx'), 'IamPolicyVisualizer'),
     'gmail-addon-simulator': lazyWithRetry(() => import('./GmailAddonSimulator.tsx'), 'GmailAddonSimulator'),
+    'feature-forge': lazyWithRetry(() => import('./FeatureForge.tsx'), 'FeatureForge'),
+    'ai-full-stack-builder': lazyWithRetry(() => import('./AiFullStackFeatureBuilder.tsx'), 'AiFullStackFeatureBuilder'),
 };
 
 export const ALL_FEATURES: Feature[] = RAW_FEATURES.map(feature => ({

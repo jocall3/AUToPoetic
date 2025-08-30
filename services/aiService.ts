@@ -1,24 +1,39 @@
-
-
-
-import { GoogleGenAI, Type, GenerateContentResponse, FunctionDeclaration } from "@google/genai";
-import type { GeneratedFile, StructuredPrSummary, StructuredExplanation, ColorTheme, SemanticColorTheme, StructuredReview, SlideSummary, SecurityVulnerability, CodeSmell } from '../types.ts';
+import { GoogleGenAI, Type } from "@google/genai";
+import type { GenerateContentResponse, FunctionDeclaration } from "@google/genai";
+import type { GeneratedFile, StructuredPrSummary, StructuredExplanation, ColorTheme, SemanticColorTheme, StructuredReview, SlideSummary, SecurityVulnerability, CodeSmell, CustomFeature } from '../types.ts';
 import { logError } from './telemetryService.ts';
+import { getDecryptedCredential } from './vaultService.ts';
 
-const API_KEY = process.env.GEMINI_API_KEY;
+let ai: GoogleGenAI | null = null;
+let lastUsedApiKey: string | null = null;
 
-if (!API_KEY) {
-  throw new Error("Gemini API key not found. Please set the GEMINI_API_KEY environment variable.");
-}
-const ai = new GoogleGenAI({ apiKey: API_KEY });
+/**
+ * Gets a GoogleGenAI client instance, initializing it with a key from the vault.
+ * It caches the client and only re-initializes if the key changes (e.g., user updates it).
+ * @returns A promise that resolves to a GoogleGenAI instance.
+ */
+const getAiClient = async (): Promise<GoogleGenAI> => {
+    const apiKey = await getDecryptedCredential('gemini_api_key');
+    if (!apiKey) {
+        throw new Error("Google Gemini API key not found in vault. Please add it in the Workspace Connector Hub.");
+    }
+
+    if (!ai || apiKey !== lastUsedApiKey) {
+        lastUsedApiKey = apiKey;
+        ai = new GoogleGenAI({ apiKey });
+    }
+    
+    return ai;
+};
 
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 // --- Unified AI Helpers ---
 
 export async function* streamContent(prompt: string | { parts: any[] }, systemInstruction: string, temperature = 0.5) {
+    const aiClient = await getAiClient();
     try {
-        const response = await ai.models.generateContentStream({
+        const response = await aiClient.models.generateContentStream({
             model: 'gemini-2.5-flash',
             contents: prompt as any,
             config: { systemInstruction, temperature }
@@ -39,8 +54,9 @@ export async function* streamContent(prompt: string | { parts: any[] }, systemIn
 }
 
 export async function generateContent(prompt: string, systemInstruction: string, temperature = 0.5): Promise<string> {
+    const aiClient = await getAiClient();
     try {
-        const response = await ai.models.generateContent({
+        const response = await aiClient.models.generateContent({
             model: 'gemini-2.5-flash',
             contents: prompt,
             config: { systemInstruction, temperature }
@@ -55,8 +71,9 @@ export async function generateContent(prompt: string, systemInstruction: string,
 
 
 export async function generateJson<T>(prompt: any, systemInstruction: string, schema: any, temperature = 0.2): Promise<T> {
+    const aiClient = await getAiClient();
     try {
-        const response = await ai.models.generateContent({
+        const response = await aiClient.models.generateContent({
             model: "gemini-2.5-flash",
             contents: prompt,
             config: {
@@ -74,6 +91,29 @@ export async function generateJson<T>(prompt: any, systemInstruction: string, sc
     }
 }
 
+export const generateAppFeatureComponent = (prompt: string): Promise<Omit<CustomFeature, 'id'>> => {
+    const systemInstruction = "You are an expert software developer creating a new, self-contained React functional component for an application. The component should be written in TypeScript, use Tailwind CSS for styling, and be defined as a single string. It must not contain any import statements. All necessary React logic should be inline (e.g., `React.useState`). Respond with only a JSON object containing the name, description, a valid icon name from the provided list, and the component code string.";
+    const validIcons = "CommandCenterIcon, CodeExplainerIcon, FeatureBuilderIcon, CodeMigratorIcon, ThemeDesignerIcon, SnippetVaultIcon, UnitTestGeneratorIcon, CommitGeneratorIcon, GitLogAnalyzerIcon, ConcurrencyAnalyzerIcon, RegexSandboxIcon, PromptCraftPadIcon, CodeFormatterIcon, JsonTreeIcon, CssGridEditorIcon, SchemaDesignerIcon, PwaManifestEditorIcon, MarkdownSlidesIcon, ScreenshotToComponentIcon, SvgPathEditorIcon, StyleTransferIcon, CodingChallengeIcon, CodeReviewBotIcon, ChangelogGeneratorIcon, CronJobBuilderIcon, AsyncCallTreeIcon, AudioToCodeIcon, CodeDiffGhostIcon, CodeSpellCheckerIcon, ColorPaletteGeneratorIcon, LogicFlowBuilderIcon, MetaTagEditorIcon, NetworkVisualizerIcon, ResponsiveTesterIcon, SassCompilerIcon, ImageGeneratorIcon, XbrlConverterIcon, DigitalWhiteboardIcon, TypographyLabIcon, AiPullRequestAssistantIcon, ProjectExplorerIcon, ServerStackIcon, DocumentTextIcon, ChartBarIcon, EyeIcon, PaperAirplaneIcon, CloudIcon, ShieldCheckIcon, CpuChipIcon, SparklesIcon, MailIcon, BugAntIcon, MagnifyingGlassIcon, RectangleGroupIcon, GcpIcon";
+
+    const schema = {
+        type: Type.OBJECT,
+        properties: {
+            name: { type: Type.STRING, description: "A short, descriptive name for the feature." },
+            description: { type: Type.STRING, description: "A one-sentence description of what the feature does." },
+            icon: { type: Type.STRING, description: `A valid icon name from this list: ${validIcons}` },
+            code: { type: Type.STRING, description: "The full React component code as a single string. It must start with `() => {` and be a valid React functional component body. Do not include imports." }
+        },
+        required: ["name", "description", "icon", "code"]
+    };
+    
+    const fullPrompt = `Based on the user request, generate a new feature component.
+    
+    User Request: "${prompt}"
+
+    Valid Icon Names: ${validIcons}.
+    `;
+    return generateJson(fullPrompt, systemInstruction, schema);
+};
 
 // --- Unified Feature Functions (Streaming) ---
 
@@ -427,10 +467,11 @@ export const generateFeature = (prompt: string, framework: string, styling: stri
 
 export const generateFullStackFeature = (prompt: string, framework: string, styling: string): Promise<GeneratedFile[]> => {
     const systemInstruction = `You are an AI that generates complete, production-ready full-stack features.
-    You must generate three files:
+    You must generate four files:
     1. A frontend ${framework} component using ${styling}. File path should be 'Component.tsx'.
-    2. A backend Google Cloud Function in Node.js. File path should be 'functions/index.js'. It should be a simple HTTP-triggered function.
-    3. Firestore Security Rules that allow public reads but only authenticated writes. File path should be 'firestore.rules'.
+    2. A backend Google Cloud Function in Node.js. File path should be 'functions/index.js'. It should be a simple HTTP-triggered function that interacts with Firestore.
+    3. A 'package.json' for the Cloud Function, including 'firebase-admin' and 'firebase-functions'. File path should be 'functions/package.json'.
+    4. Firestore Security Rules that allow public reads but only authenticated writes. File path should be 'firestore.rules'.
     Ensure the frontend component knows how to call the cloud function.
     IMPORTANT: When the user's prompt is about maps, location, addresses, or stores, you MUST prioritize using the Google Maps JavaScript API in the frontend component. Generate a component that accepts an 'apiKey' prop and uses it to load the Maps script.`;
     const userPrompt = `Generate a full-stack feature for: "${prompt}"`;
@@ -439,7 +480,7 @@ export const generateFullStackFeature = (prompt: string, framework: string, styl
         items: {
             type: Type.OBJECT,
             properties: {
-                filePath: { type: Type.STRING, enum: ['Component.tsx', 'functions/index.js', 'firestore.rules'] },
+                filePath: { type: Type.STRING, enum: ['Component.tsx', 'functions/index.js', 'functions/package.json', 'firestore.rules'] },
                 content: { type: Type.STRING },
                 description: { type: Type.STRING }
             },
@@ -557,8 +598,9 @@ export const generateTerraformConfig = (cloud: 'aws' | 'gcp', description: strin
 // --- FUNCTION CALLING ---
 export interface CommandResponse { text: string; functionCalls?: { name: string; args: any; }[]; }
 export const getInferenceFunction = async (prompt: string, functionDeclarations: FunctionDeclaration[], knowledgeBase: string): Promise<CommandResponse> => {
+    const aiClient = await getAiClient();
     try {
-        const response: GenerateContentResponse = await ai.models.generateContent({ model: "gemini-2.5-flash", contents: prompt, config: { systemInstruction: `You are a helpful assistant for a developer tool. You must decide which function to call to satisfy the user's request, based on your knowledge base. If no specific tool seems appropriate, respond with text.\n\nKnowledge Base:\n${knowledgeBase}`, tools: [{ functionDeclarations }] } });
+        const response: GenerateContentResponse = await aiClient.models.generateContent({ model: "gemini-2.5-flash", contents: prompt, config: { systemInstruction: `You are a helpful assistant for a developer tool. You must decide which function to call to satisfy the user's request, based on your knowledge base. If no specific tool seems appropriate, respond with text.\n\nKnowledge Base:\n${knowledgeBase}`, tools: [{ functionDeclarations }] } });
         const functionCalls: { name: string, args: any }[] = [];
         const parts = response.candidates?.[0]?.content?.parts ?? [];
         for (const part of parts) { if (part.functionCall) { functionCalls.push({ name: part.functionCall.name, args: part.functionCall.args }); } }
@@ -572,8 +614,9 @@ export const getInferenceFunction = async (prompt: string, functionDeclarations:
 
 // --- IMAGE & VIDEO GENERATION ---
 export const generateImage = async (prompt: string): Promise<string> => {
-    const response = await ai.models.generateImages({
-        model: 'imagen-3.0-generate-002',
+    const aiClient = await getAiClient();
+    const response = await aiClient.models.generateImages({
+        model: 'imagen-4.0-generate-001',
         prompt: prompt,
         config: { numberOfImages: 1, outputMimeType: 'image/png' },
     });
@@ -582,38 +625,6 @@ export const generateImage = async (prompt: string): Promise<string> => {
 };
 
 export const generateImageFromImageAndText = async (prompt: string, base64Image: string, mimeType: string): Promise<string> => {
-    // Note: The current SDK `generateImages` doesn't directly support image+text input.
-    // This function will need to be updated when the SDK supports it.
-    // For now, we pass the prompt and ignore the image.
     console.warn("Image-to-image generation is not fully supported by the current SDK implementation; using text prompt only.");
     return generateImage(prompt);
-};
-
-
-export const generateMultiComponentFlowFromVideo = async (videoBase64: string, mimeType: string, onUpdate: (message: string) => void): Promise<GeneratedFile[]> => {
-    const systemInstruction = "You are an expert frontend developer. Analyze the user flow in this screen recording and generate all the necessary React components and routing logic to replicate it. Create separate files for each component.";
-    const prompt = "Analyze this screen recording of a user flow. Identify the different UI states/pages, and generate the React components (using Tailwind CSS) and routing logic needed to create this multi-component feature. Provide the output as a list of files.";
-    
-    onUpdate("Starting video analysis...");
-    let operation = await ai.models.generateVideos({
-      model: 'veo-2.0-generate-001',
-      prompt: "A short, silent video showing a user interacting with a web UI.",
-      config: { numberOfVideos: 1 }
-    });
-
-    onUpdate("Video processing initiated. This may take several minutes...");
-    while (!operation.done) {
-      await sleep(10000);
-      onUpdate("Checking video status...");
-      operation = await ai.operations.getVideosOperation({operation: operation});
-    }
-
-    onUpdate("Video processing complete. Generating code from flow...");
-    // This is a conceptual placeholder. Actual video analysis for code gen is not a direct feature.
-    // We simulate it by asking a text model to describe the flow and then generate from that.
-    // A real implementation would require a multimodal model that can output structured data from video.
-    const descriptionPrompt = `Describe the user flow shown in a video where a user first sees a list of items, clicks one to see a detail view, and then clicks a button on the detail view.`;
-    
-    const filesSchema = { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { filePath: { type: Type.STRING }, content: { type: Type.STRING }, description: { type: Type.STRING } }, required: ["filePath", "content", "description"] } };
-    return generateJson(descriptionPrompt, systemInstruction, filesSchema);
 };

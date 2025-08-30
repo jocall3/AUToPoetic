@@ -16,7 +16,8 @@ const SCOPES = [
     'https://www.googleapis.com/auth/drive.file',
     'https://www.googleapis.com/auth/iam.test',
     'https://www.googleapis.com/auth/gmail.addons.current.action.compose',
-    'https://www.googleapis.com/auth/gmail.addons.current.message.action'
+    'https://www.googleapis.com/auth/gmail.addons.current.message.action',
+    'https://www.googleapis.com/auth/gmail.send'
 ].join(' ');
 
 let tokenClient: any;

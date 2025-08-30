@@ -48,7 +48,7 @@ const ServiceConnectionCard: React.FC<{
                         <div key={field.id}>
                             <label className="text-xs text-text-secondary">{field.label}</label>
                             <input
-                                type={field.id.includes('token') || field.id.includes('pat') ? 'password' : 'text'}
+                                type={field.id.includes('token') || field.id.includes('pat') || field.id.includes('key') ? 'password' : 'text'}
                                 value={creds[field.id] || ''}
                                 onChange={e => setCreds(prev => ({ ...prev, [field.id]: e.target.value }))}
                                 placeholder={field.placeholder}
@@ -102,6 +102,7 @@ export const WorkspaceConnectorHub: React.FC = () => {
              setConnectionStatuses(s => ({ ...s, [serviceName]: token ? successMessage : 'Not Connected' }));
         };
 
+        await checkCred('gemini_api_key', 'Google Gemini', 'Connected');
         await checkCred('github_pat', 'GitHub', githubUser ? `Connected as ${githubUser.login}`: 'Connected');
         await checkCred('jira_pat', 'Jira', 'Connected');
         await checkCred('slack_bot_token', 'Slack', 'Connected');
@@ -199,8 +200,8 @@ export const WorkspaceConnectorHub: React.FC = () => {
                 <div className="text-center bg-surface p-8 rounded-lg border border-border max-w-md">
                     <h2 className="text-xl font-bold">Sign In Required</h2>
                     <p className="text-text-secondary my-4">Please sign in with your Google account to manage workspace connections.</p>
-                    <button onClick={handleSignIn} className="btn-primary px-6 py-3 flex items-center justify-center gap-2 mx-auto">
-                        Sign in with Google
+                    <button onClick={handleSignIn} disabled={loadingStates.google} className="btn-primary px-6 py-3 flex items-center justify-center gap-2 mx-auto">
+                        {loadingStates.google ? <LoadingSpinner/> : 'Sign in with Google'}
                     </button>
                 </div>
             </div>
@@ -216,6 +217,15 @@ export const WorkspaceConnectorHub: React.FC = () => {
             <div className="flex-grow grid grid-cols-1 lg:grid-cols-2 gap-8 min-h-0">
                 <div className="flex flex-col gap-6 overflow-y-auto pr-4">
                     <h2 className="text-2xl font-bold">Service Connections</h2>
+                    <ServiceConnectionCard 
+                        serviceName="Google Gemini"
+                        icon={<SparklesIcon />}
+                        fields={[{ id: 'gemini_api_key', label: 'API Key', placeholder: 'Your Gemini API Key' }]}
+                        onConnect={(creds) => handleConnect('Google Gemini', creds)}
+                        onDisconnect={() => handleDisconnect('Google Gemini', ['gemini_api_key'])}
+                        status={connectionStatuses['Google Gemini'] || 'Checking...'}
+                        isLoading={loadingStates['Google Gemini']}
+                    />
                     <ServiceConnectionCard 
                         serviceName="GitHub"
                         icon={<GithubIcon />}

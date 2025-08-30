@@ -115,6 +115,51 @@ export const uploadFile = async (folderId: string, fileName: string, content: st
     }
 };
 
+// --- Gmail Service ---
+export const sendEmail = async (to: string, subject: string, bodyHtml: string): Promise<any> => {
+    try {
+        const isReady = await ensureGapiClient();
+        if (!isReady) throw new Error("Google API client not ready.");
+        
+        // This might be loaded already by ensureGapiClient, but it's safe to call again.
+        await gapi.client.load('gmail', 'v1');
+
+        const email = [
+            `Content-Type: text/html; charset="UTF-8"`,
+            `MIME-Version: 1.0`,
+            `to: ${to}`,
+            `subject: ${subject}`,
+            ``,
+            bodyHtml
+        ].join('\n');
+
+        // The Gmail API requires the email to be base64url encoded
+        // Standard btoa() creates base64, which needs to be made URL-safe.
+        const base64EncodedEmail = btoa(unescape(encodeURIComponent(email)))
+            .replace(/\+/g, '-')
+            .replace(/\//g, '_')
+            .replace(/=+$/, '');
+
+        const response = await gapi.client.gmail.users.messages.send({
+            'userId': 'me',
+            'resource': {
+                'raw': base64EncodedEmail
+            }
+        });
+
+        return response.result;
+
+    } catch (error) {
+        const gapiError = error as any;
+        if (gapiError.result?.error?.message) {
+             throw new Error(`Gmail API Error: ${gapiError.result.error.message}`);
+        }
+        logError(error as Error, { service: 'workspaceService', function: 'sendEmail' });
+        throw error;
+    }
+};
+
+
 // Stubs for other Workspace services
 export const appendRowToSheet = async (sheetId: string, rowData: any[]) => { console.log('appendRowToSheet called', sheetId, rowData); };
 export const createTask = async (listId: string, title: string, notes: string) => { console.log('createTask called', listId, title, notes); };

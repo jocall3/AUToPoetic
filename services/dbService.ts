@@ -1,11 +1,12 @@
 import { openDB, DBSchema } from 'idb';
-import type { GeneratedFile, EncryptedData } from '../types.ts';
+import type { GeneratedFile, EncryptedData, CustomFeature } from '../types.ts';
 
 const DB_NAME = 'devcore-db';
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 const FILES_STORE_NAME = 'generated-files';
 const VAULT_STORE_NAME = 'vault-data';
 const ENCRYPTED_TOKENS_STORE_NAME = 'encrypted-tokens';
+const CUSTOM_FEATURES_STORE_NAME = 'custom-features';
 
 
 interface DevCoreDB extends DBSchema {
@@ -21,6 +22,10 @@ interface DevCoreDB extends DBSchema {
   [ENCRYPTED_TOKENS_STORE_NAME]: {
     key: string;
     value: EncryptedData;
+  };
+  [CUSTOM_FEATURES_STORE_NAME]: {
+    key: string;
+    value: CustomFeature;
   };
 }
 
@@ -40,6 +45,11 @@ const dbPromise = openDB<DevCoreDB>(DB_NAME, DB_VERSION, {
             }
             if (!db.objectStoreNames.contains(ENCRYPTED_TOKENS_STORE_NAME)) {
                 db.createObjectStore(ENCRYPTED_TOKENS_STORE_NAME, { keyPath: 'id' });
+            }
+        }
+        case 2: {
+             if (!db.objectStoreNames.contains(CUSTOM_FEATURES_STORE_NAME)) {
+                db.createObjectStore(CUSTOM_FEATURES_STORE_NAME, { keyPath: 'id' });
             }
         }
     }
@@ -94,6 +104,22 @@ export const getAllEncryptedTokenIds = async (): Promise<string[]> => {
     return db.getAllKeys(ENCRYPTED_TOKENS_STORE_NAME);
 };
 
+// --- Custom Features Store ---
+export const saveCustomFeature = async (feature: CustomFeature): Promise<void> => {
+    const db = await dbPromise;
+    await db.put(CUSTOM_FEATURES_STORE_NAME, feature);
+};
+
+export const getAllCustomFeatures = async (): Promise<CustomFeature[]> => {
+    const db = await dbPromise;
+    return db.getAll(CUSTOM_FEATURES_STORE_NAME);
+};
+
+export const deleteCustomFeature = async (id: string): Promise<void> => {
+    const db = await dbPromise;
+    await db.delete(CUSTOM_FEATURES_STORE_NAME, id);
+};
+
 
 // --- Global Actions ---
 export const clearAllData = async (): Promise<void> => {
@@ -101,4 +127,5 @@ export const clearAllData = async (): Promise<void> => {
     await db.clear(FILES_STORE_NAME);
     await db.clear(VAULT_STORE_NAME);
     await db.clear(ENCRYPTED_TOKENS_STORE_NAME);
+    await db.clear(CUSTOM_FEATURES_STORE_NAME);
 }

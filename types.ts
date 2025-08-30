@@ -16,6 +16,7 @@ export interface Feature {
     model: string;
     systemInstruction?: string;
   };
+  isCustom?: boolean;
 }
 
 export type ViewType = FeatureId | ChromeViewType;
@@ -170,4 +171,12 @@ export interface CodeSmell {
     smell: string;
     line: number;
     explanation: string;
+}
+
+export interface CustomFeature {
+  id: string;
+  name: string;
+  description: string;
+  icon: string; // Icon name as a string
+  code: string;
 }

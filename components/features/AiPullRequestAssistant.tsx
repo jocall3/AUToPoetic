@@ -1,6 +1,5 @@
 
 import React, { useState, useMemo, useCallback } from 'react';
-import * as Diff from 'diff';
 import { generatePrSummaryStructured, generateTechnicalSpecFromDiff, downloadFile } from '../../services/index.ts';
 import { createDocument, insertText } from '../../services/workspaceService.ts';
 import type { StructuredPrSummary } from '../../types.ts';
@@ -9,17 +8,18 @@ import { LoadingSpinner } from '../shared/index.tsx';
 import { useNotification } from '../../contexts/NotificationContext.tsx';
 import { useGlobalState } from '../../contexts/GlobalStateContext.tsx';
 
-const exampleBefore = `function Greeter(props) {
-  return <h1>Hello, {props.name}!</h1>;
-}`;
-const exampleAfter = `function Greeter({ name, enthusiasmLevel = 1 }) {
-  const punctuation = '!'.repeat(enthusiasmLevel);
-  return <h1>Hello, {name}{punctuation}</h1>;
-}`;
+const exampleDiff = `--- a/src/components/Greeter.js
++++ b/src/components/Greeter.js
+@@ -1,6 +1,7 @@
+ function Greeter(props) {
+-  return <h1>Hello, {props.name}!</h1>;
++  const { name, enthusiasmLevel = 1 } = props;
++  const punctuation = '!'.repeat(enthusiasmLevel);
++  return <h1>Hello, {name}{punctuation}</h1>;
+ }`;
 
 export const AiPullRequestAssistant: React.FC = () => {
-    const [beforeCode, setBeforeCode] = useState<string>(exampleBefore);
-    const [afterCode, setAfterCode] = useState<string>(exampleAfter);
+    const [diff, setDiff] = useState<string>(exampleDiff);
     const [isLoading, setIsLoading] = useState<boolean>(false);
     const [isExporting, setIsExporting] = useState<boolean>(false);
     const [error, setError] = useState<string>('');
@@ -29,11 +29,9 @@ export const AiPullRequestAssistant: React.FC = () => {
     const { state } = useGlobalState();
     const { user } = state;
 
-    const diff = useMemo(() => Diff.createPatch('component.tsx', beforeCode, afterCode), [beforeCode, afterCode]);
-
     const handleGenerateSummary = useCallback(async () => {
-        if (!beforeCode.trim() && !afterCode.trim()) {
-            setError('Please provide code to generate a summary.');
+        if (!diff.trim()) {
+            setError('Please provide a diff to generate a summary.');
             return;
         }
         setIsLoading(true);
@@ -49,7 +47,7 @@ export const AiPullRequestAssistant: React.FC = () => {
         } finally {
             setIsLoading(false);
         }
-    }, [diff, beforeCode, afterCode]);
+    }, [diff]);
 
     const handleExportToDocs = async () => {
         if (!summary || !user) {
@@ -78,18 +76,19 @@ export const AiPullRequestAssistant: React.FC = () => {
                     <AiPullRequestAssistantIcon />
                     <span className="ml-3">AI Pull Request Assistant</span>
                 </h1>
-                <p className="text-text-secondary mt-1">Generate a PR summary from code changes and export a full tech spec.</p>
+                <p className="text-text-secondary mt-1">Generate a PR summary from a git diff and export a full tech spec.</p>
             </header>
             <div className="flex-grow grid grid-cols-1 lg:grid-cols-2 gap-6 min-h-0">
                 {/* Left side: Inputs and Generator */}
                 <div className="flex flex-col gap-4 min-h-0">
                     <div className="flex flex-col flex-1 min-h-0">
-                        <label htmlFor="before-code" className="text-sm font-medium text-text-secondary mb-2">Before</label>
-                        <textarea id="before-code" value={beforeCode} onChange={e => setBeforeCode(e.target.value)} className="flex-grow p-4 bg-surface border border-border rounded-md resize-none font-mono text-sm" />
-                    </div>
-                    <div className="flex flex-col flex-1 min-h-0">
-                        <label htmlFor="after-code" className="text-sm font-medium text-text-secondary mb-2">After</label>
-                        <textarea id="after-code" value={afterCode} onChange={e => setAfterCode(e.target.value)} className="flex-grow p-4 bg-surface border border-border rounded-md resize-none font-mono text-sm" />
+                        <label htmlFor="diff-input" className="text-sm font-medium text-text-secondary mb-2">Git Diff</label>
+                        <textarea
+                            id="diff-input"
+                            value={diff}
+                            onChange={e => setDiff(e.target.value)}
+                            className="flex-grow p-4 bg-surface border border-border rounded-md resize-none font-mono text-sm"
+                        />
                     </div>
                     <button onClick={handleGenerateSummary} disabled={isLoading} className="btn-primary w-full flex items-center justify-center px-6 py-3">
                         {isLoading ? <LoadingSpinner /> : 'Generate Summary'}
