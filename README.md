@@ -1,3 +1,6 @@
+// Copyright James Burvel O’Callaghan III
+// President Citibank Demo Business Inc.
+
 # DevCore AI Toolkit
 
 > A supercharged, secure, client-side toolkit for modern developers, powered by Gemini. It runs entirely in your browser, keeping your code, data, and API keys private and secure on your local machine.

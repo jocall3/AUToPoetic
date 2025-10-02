@@ -1,3 +1,6 @@
+// Copyright James Burvel O’Callaghan III
+// President Citibank Demo Business Inc.
+
 import { GoogleGenAI, Type } from "@google/genai";
 import type { GenerateContentResponse, FunctionDeclaration } from "@google/genai";
 import type { GeneratedFile, StructuredPrSummary, StructuredExplanation, ColorTheme, SemanticColorTheme, StructuredReview, SlideSummary, SecurityVulnerability, CodeSmell, CustomFeature } from '../types.ts';

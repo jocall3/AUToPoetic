@@ -1,3 +1,6 @@
+// Copyright James Burvel O’Callaghan III
+// President Citibank Demo Business Inc.
+
 import { openDB, DBSchema } from 'idb';
 import type { GeneratedFile, EncryptedData, CustomFeature } from '../types.ts';
 
