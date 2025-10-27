@@ -11,7 +11,7 @@
  * State updates are debounced before writing to localStorage to minimize disk I/O.
  * @security Session tokens (JWTs) are intentionally not persisted in localStorage by this
  * context. They should be managed in memory or secure storage by the authentication service.
- * Only non-sensitive UI state is persisted.
+ * Only non-sensitive UI state and user settings (like the Gemini API key) are persisted.
  */
 
 import React, { createContext, useReducer, useContext, useEffect } from 'react';
@@ -23,7 +23,7 @@ import type { AppUser } from '../types';
  * @interface SessionState
  * @description Represents the authentication and session state of the user.
  * @property {'pending' | 'authenticated' | 'unauthenticated'} status - The current authentication status.
- * @property {AppUser | null} user - The authenticated user's profile information, typically from JWT claims.
+ * @property {AppUser | null} user - The authenticated user's profile information, typically from the IdP.
  * @property {string | null} token - The short-lived JWT for the current session. Stored in memory only.
  */
 export interface SessionState {
@@ -72,9 +72,11 @@ export interface WorkspaceState {
  * @interface SettingsState
  * @description Holds user-configurable settings that persist across sessions.
  * @property {string[]} hiddenFeatures - An array of feature IDs that the user has chosen to hide.
+ * @property {string | null} geminiApiKey - The user-provided Gemini API key for AI features.
  */
 export interface SettingsState {
   hiddenFeatures: string[];
+  geminiApiKey: string | null;
 }
 
 /**
@@ -104,7 +106,8 @@ type Action =
   | { type: 'WORKSPACE_FOCUS_APP'; payload: { instanceId: string } }
   | { type: 'WORKSPACE_MINIMIZE_APP'; payload: { instanceId: string } }
   | { type: 'WORKSPACE_UPDATE_APP'; payload: { instanceId: string; updates: Partial<WorkspaceApp> } }
-  | { type: 'SETTINGS_TOGGLE_FEATURE_VISIBILITY'; payload: { featureId: string } };
+  | { type: 'SETTINGS_TOGGLE_FEATURE_VISIBILITY'; payload: { featureId: string } }
+  | { type: 'SETTINGS_SET_GEMINI_API_KEY'; payload: { apiKey: string | null } };
 
 // --- INITIAL STATE & REDUCER ---
 
@@ -125,6 +128,7 @@ const initialState: GlobalState = {
   },
   settings: {
     hiddenFeatures: [],
+    geminiApiKey: null,
   },
 };
 
@@ -145,8 +149,6 @@ const reducer = (state: GlobalState, action: Action): GlobalState => {
       return {
         ...state,
         session: { status: 'unauthenticated', user: null, token: null },
-        // Optionally reset workspace on logout
-        // workspace: initialState.workspace,
       };
 
     case 'WORKSPACE_OPEN_APP': {
@@ -156,7 +158,6 @@ const reducer = (state: GlobalState, action: Action): GlobalState => {
       );
 
       if (existingApp) {
-        // If app is already open and not minimized, just focus it.
         const newZCounter = state.workspace.zCounter + 1;
         return {
           ...state,
@@ -176,7 +177,6 @@ const reducer = (state: GlobalState, action: Action): GlobalState => {
         };
       }
 
-      // If it's minimized or not open, create a new instance
       const instanceId = `${appId}-${Date.now()}`;
       const newZCounter = state.workspace.zCounter + 1;
       const openAppsCount = Object.keys(state.workspace.apps).length;
@@ -211,7 +211,7 @@ const reducer = (state: GlobalState, action: Action): GlobalState => {
           ...state.workspace,
           apps: remainingApps,
           activeAppInstanceId: state.workspace.activeAppInstanceId === instanceId
-            ? null // Or focus the next highest z-index window
+            ? null
             : state.workspace.activeAppInstanceId,
         },
       };
@@ -232,7 +232,7 @@ const reducer = (state: GlobalState, action: Action): GlobalState => {
             [instanceId]: {
               ...appToFocus,
               zIndex: newZCounter,
-              isMinimized: false, // Always un-minimize on focus
+              isMinimized: false,
             },
           },
           activeAppInstanceId: instanceId,
@@ -292,6 +292,15 @@ const reducer = (state: GlobalState, action: Action): GlobalState => {
       };
     }
 
+    case 'SETTINGS_SET_GEMINI_API_KEY':
+      return {
+        ...state,
+        settings: {
+          ...state.settings,
+          geminiApiKey: action.payload.apiKey,
+        },
+      };
+
     default:
       return state;
   }
@@ -338,7 +347,7 @@ export const GlobalStateProvider: React.FC<{ children: React.ReactNode }> = ({ c
       const hydratedState = { ...initial };
 
       if (storedState.workspace) hydratedState.workspace = storedState.workspace;
-      if (storedState.settings) hydratedState.settings = storedState.settings;
+      if (storedState.settings) hydratedState.settings = { ...initial.settings, ...storedState.settings };
 
       return hydratedState;
     } catch (error) {
