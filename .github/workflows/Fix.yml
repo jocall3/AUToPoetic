@@ -1,0 +1,23 @@
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: false
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+      - name: Remove broken submodule
+        run: |
+          if [ -f .gitmodules ]; then
+            git submodule deinit -f packages/workspace-providers || true
+            git rm -f packages/workspace-providers || true
+          fi
+      - name: Build with Jekyll
+        uses: actions/jekyll-build-pages@v1
+        with:
+          source: ./
+          destination: ./_site
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
