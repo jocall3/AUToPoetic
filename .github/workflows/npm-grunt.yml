@@ -24,9 +24,11 @@ jobs:
           node-version: ${{ matrix.node-version }}
           cache: 'pnpm'
           cache-dependency-path: pnpm-lock.yaml
-          package-manager: pnpm
 
-      # pnpm is now available in PATH
+      # Install pnpm explicitly
+      - name: Install pnpm
+        run: npm install -g pnpm
+
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
