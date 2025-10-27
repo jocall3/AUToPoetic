@@ -1,4 +1,4 @@
-name: Fix package.json
+name: Fix monorepo dependencies
 
 on:
   push:
@@ -13,47 +13,29 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v3
 
-      - name: Set up Node.js
+      - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20  # no cache
+          node-version: 20
 
-      - name: Install jq for JSON manipulation
+      - name: Install pnpm
+        run: npm install -g pnpm
+
+      - name: Install jq
         run: sudo apt-get update && sudo apt-get install -y jq
 
-      - name: Clean package.json
+      - name: Clean invalid external dependencies
         run: |
-          echo "Removing workspace:* dependencies from package.json..."
-          TMP_FILE="package.json.tmp"
-          jq 'del(.dependencies? | with_entries(select(.value|test("workspace:"))))
-              | del(.devDependencies? | with_entries(select(.value|test("workspace:"))))' package.json > $TMP_FILE
-          mv $TMP_FILE package.json
+          chmod +x .github/scripts/clean-invalid-deps.sh
+          .github/scripts/clean-invalid-deps.sh
 
-          echo "Checking each dependency against npm registry..."
-          check_and_remove() {
-            SECTION=$1
-            if jq -e ".${SECTION}" package.json > /dev/null; then
-              for pkg in $(jq -r ".${SECTION} | keys[]" package.json); do
-                if ! npm view "$pkg" >/dev/null 2>&1; then
-                  echo "Removing non-existent package: $pkg from $SECTION"
-                  TMP_FILE="package.json.tmp"
-                  jq "del(.${SECTION}[\"$pkg\"])" package.json > $TMP_FILE
-                  mv $TMP_FILE package.json
-                fi
-              done
-            fi
-          }
-
-          check_and_remove dependencies
-          check_and_remove devDependencies
-
-      - name: Install dependencies and generate lockfile
-        run: npm install
+      - name: Install all dependencies and generate lockfile
+        run: pnpm install
 
       - name: Commit and push changes
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add package.json package-lock.json
-          git commit -m "chore: clean invalid dependencies and generate lockfile" || echo "No changes to commit"
+          git add package.json pnpm-lock.yaml
+          git commit -m "chore: clean invalid dependencies and regenerate pnpm-lock.yaml" || echo "No changes to commit"
           git push
