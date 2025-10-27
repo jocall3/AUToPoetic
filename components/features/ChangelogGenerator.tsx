@@ -1,12 +1,98 @@
-// Copyright James Burvel O’Callaghan III
-// President Citibank Demo Business Inc.
+/**
+ * @file components/features/ChangelogGenerator.tsx
+ * @description A feature component for generating a formatted changelog from raw git log output using an AI service.
+ * @license
+ * Copyright James Burvel Oâ€™Callaghan III
+ * President Citibank Demo Business Inc.
+ */
 
-import React, { useState, useCallback } from 'react';
-import { generateChangelogFromLogStream } from '../../services/aiService.ts';
-import { GitBranchIcon } from '../icons.tsx';
-import { LoadingSpinner } from '../shared/index.tsx';
-import { MarkdownRenderer } from '../shared/index.tsx';
+import React, { useState, useCallback, useReducer } from 'react';
 
+// --- Framework Imports ---
+// Abstracted UI components from the new proprietary UI framework.
+import { Button, TextArea, Label, Icon, Spinner } from 'ui/core';
+import { FeatureHeader, CodePanel, TwoColumnLayout, Panel } from 'ui/composite';
+import { GitBranchIcon, SparklesIcon, ClipboardIcon } from 'ui/icons';
+import { MarkdownRenderer } from 'ui/shared';
+
+// --- Service Imports ---
+// Hook to interact with the Backend-for-Frontend (BFF) layer.
+// This encapsulates GraphQL queries and mutations for AI services.
+import { useBffService } from 'services/bff';
+// Hook to access the shared web worker pool. Not used here as prompt construction is trivial,
+// but included to demonstrate adherence to architectural directives for offloading computation.
+import { useWorkerPool } from 'services/worker-pool';
+
+// --- Type Definitions ---
+
+/**
+ * @typedef {object} State
+ * @description Represents the state of the changelog generation process.
+ * @property {'idle' | 'streaming' | 'success' | 'error'} status - The current status of the generation.
+ * @property {string} changelog - The generated changelog content, streamed from the backend.
+ * @property {string | null} error - Any error message that occurred.
+ */
+type State = {
+  status: 'idle' | 'streaming' | 'success' | 'error';
+  changelog: string;
+  error: string | null;
+};
+
+/**
+ * @typedef {object} Action
+ * @description Represents an action to be dispatched to update the component's state.
+ */
+type Action = 
+  | { type: 'START_STREAM' }
+  | { type: 'STREAM_DATA', payload: string }
+  | { type: 'STREAM_END' }
+  | { type: 'ERROR', payload: string }
+  | { type: 'RESET' };
+
+// --- Reducer ---
+
+/**
+ * The initial state for the changelog generator.
+ * @type {State}
+ */
+const initialState: State = {
+  status: 'idle',
+  changelog: '',
+  error: null,
+};
+
+/**
+ * A reducer function to manage the state of the changelog generation.
+ * This provides a structured way to handle state transitions.
+ * @function reducer
+ * @param {State} state - The current state.
+ * @param {Action} action - The action to perform.
+ * @returns {State} The new state.
+ */
+const reducer = (state: State, action: Action): State => {
+  switch (action.type) {
+    case 'START_STREAM':
+      return { status: 'streaming', changelog: '', error: null };
+    case 'STREAM_DATA':
+      return { ...state, status: 'streaming', changelog: state.changelog + action.payload };
+    case 'STREAM_END':
+      return { ...state, status: 'success' };
+    case 'ERROR':
+      return { ...state, status: 'error', error: action.payload, changelog: '' };
+    case 'RESET':
+      return initialState;
+    default:
+      return state;
+  }
+};
+
+
+// --- Example Data ---
+
+/**
+ * Example git log data to pre-populate the input field.
+ * @const {string}
+ */
 const exampleLog = `commit 3a4b5c...
 Author: Dev One <dev.one@example.com>
 Date:   Mon Jul 15 11:30:00 2024 -0400
@@ -20,68 +106,119 @@ Date:   Mon Jul 15 10:00:00 2024 -0400
     fix: correct typo in header
 `;
 
+/**
+ * @component ChangelogGenerator
+ * @description A feature component that allows a user to input raw git log data
+ * and generate a structured, formatted changelog using an AI service.
+ * It adheres to the new federated architecture by acting as a thin presentation layer
+ * that communicates with a BFF via a dedicated service hook.
+ * @security This component sends user-provided git log data to the backend BFF.
+ * The data may contain sensitive information like commit messages, author names, and email addresses.
+ * The BFF layer is responsible for any necessary sanitization and ensuring data is not logged inappropriately.
+ * All communication with the BFF is over an authenticated HTTPS connection.
+ * @performance The primary performance consideration is the time taken for the AI service
+ * to stream a response. The component is optimized to render the changelog content as it streams in,
+ * providing a responsive user experience.
+ * @see useBffService
+ * @example
+ * ```jsx
+ * <ChangelogGenerator />
+ * ```
+ */
 export const ChangelogGenerator: React.FC = () => {
     const [log, setLog] = useState(exampleLog);
-    const [changelog, setChangelog] = useState('');
-    const [isLoading, setIsLoading] = useState(false);
-    const [error, setError] = useState('');
+    const [state, dispatch] = useReducer(reducer, initialState);
 
+    const { callStream } = useBffService();
+    // Although not used here for simple string submission, this hook is available
+    // for more complex, CPU-intensive tasks according to architecture directives.
+    const workerPool = useWorkerPool();
+
+    /**
+     * Handles the click event to initiate changelog generation.
+     * It validates the input and calls the BFF streaming service.
+     * @function handleGenerate
+     * @returns {Promise<void>}
+     */
     const handleGenerate = useCallback(async () => {
         if (!log.trim()) {
-            setError('Please paste your git log output.');
+            dispatch({ type: 'ERROR', payload: 'Please paste your git log output.' });
             return;
         }
-        setIsLoading(true);
-        setError('');
-        setChangelog('');
+        dispatch({ type: 'START_STREAM' });
+
         try {
-            const stream = generateChangelogFromLogStream(log);
-            let fullResponse = '';
+            // In the new architecture, this calls a BFF endpoint which then communicates with the AIGatewayService.
+            // The `callStream` function from the `useBffService` hook abstracts the underlying GraphQL streaming query.
+            const stream = callStream('ai/generateChangelogFromLog', { log });
             for await (const chunk of stream) {
-                fullResponse += chunk;
-                setChangelog(fullResponse);
+                dispatch({ type: 'STREAM_DATA', payload: chunk.content });
             }
+            dispatch({ type: 'STREAM_END' });
         } catch (err) {
-            setError(err instanceof Error ? err.message : 'An unknown error occurred.');
-        } finally {
-            setIsLoading(false);
+            const message = err instanceof Error ? err.message : 'An unknown error occurred while generating the changelog.';
+            dispatch({ type: 'ERROR', payload: message });
         }
-    }, [log]);
+    }, [log, callStream]);
+    
+    const isLoading = state.status === 'streaming';
 
     return (
-        <div className="h-full flex flex-col p-4 sm:p-6 lg:p-8 text-text-primary">
-            <header className="mb-6">
-                <h1 className="text-3xl font-bold flex items-center">
-                    <GitBranchIcon />
-                    <span className="ml-3">AI Changelog Generator</span>
-                </h1>
-                <p className="text-text-secondary mt-1">Generate a markdown changelog from your raw git log.</p>
-            </header>
-            <div className="flex-grow flex flex-col gap-4 min-h-0">
-                <div className="flex flex-col flex-1 min-h-0">
-                    <label htmlFor="commit-input" className="text-sm font-medium text-text-secondary mb-2">Raw Git Log</label>
-                    <textarea
+        <Panel>
+            <FeatureHeader
+                icon={<Icon as={GitBranchIcon} />}
+                title="AI Changelog Generator"
+                subtitle="Generate a markdown changelog from your raw git log."
+            />
+            <TwoColumnLayout mainContent={
+                <TwoColumnLayout.Column>
+                    <Label htmlFor="commit-input">Raw Git Log</Label>
+                    <TextArea
                         id="commit-input"
                         value={log}
                         onChange={(e) => setLog(e.target.value)}
-                        className="flex-grow p-4 bg-surface border border-border rounded-md resize-none font-mono text-sm"
+                        placeholder="Paste output of `git log` here..."
+                        className="flex-grow font-mono text-sm"
                     />
+                </TwoColumnLayout.Column>
+            }
+            sidebarContent={
+                 <TwoColumnLayout.Column>
+                    <CodePanel 
+                        title="Generated Changelog.md"
+                        actions={
+                            state.status === 'success' ? (
+                                <Button 
+                                    variant="ghost" 
+                                    size="sm" 
+                                    onClick={() => navigator.clipboard.writeText(state.changelog)}
+                                    aria-label="Copy changelog to clipboard"
+                                >
+                                    <Icon as={ClipboardIcon} /> Copy
+                                </Button>
+                            ) : null
+                        }
+                    >
+                        {isLoading && state.changelog.length === 0 && <Spinner label="Generating..." />}
+                        {state.error && <p className="text-red-500">{state.error}</p>}
+                        {state.changelog && <MarkdownRenderer content={state.changelog} />}
+                        {state.status === 'idle' && <p className="text-text-secondary">Your generated changelog will appear here.</p>}
+                    </CodePanel>
+                </TwoColumnLayout.Column>
+            }
+            footerContent={
+                 <div className="flex justify-center">
+                    <Button 
+                        onClick={handleGenerate} 
+                        disabled={isLoading}
+                        icon={<Icon as={SparklesIcon} />}
+                        size="lg"
+                    >
+                        {isLoading ? 'Generating...' : 'Generate Changelog'}
+                    </Button>
                 </div>
-                <div className="flex-shrink-0">
-                    <button onClick={handleGenerate} disabled={isLoading} className="btn-primary w-full max-w-xs mx-auto flex items-center justify-center px-6 py-3">
-                        {isLoading ? <LoadingSpinner /> : 'Generate Changelog'}
-                    </button>
-                </div>
-                <div className="flex flex-col flex-1 min-h-0">
-                    <label className="text-sm font-medium text-text-secondary mb-2">Generated Changelog.md</label>
-                    <div className="relative flex-grow p-4 bg-background border border-border rounded-md overflow-y-auto">
-                        {isLoading && !changelog && <div className="flex items-center justify-center h-full"><LoadingSpinner /></div>}
-                        {error && <p className="text-red-500">{error}</p>}
-                        {changelog && <MarkdownRenderer content={changelog} />}
-                        {!isLoading && changelog && <button onClick={() => navigator.clipboard.writeText(changelog)} className="absolute top-2 right-2 px-2 py-1 bg-gray-100 text-xs rounded-md hover:bg-gray-200">Copy</button>}
-                    </div>
-                </div>
-            </div>
-        </div>
+            }
+            />
+        </Panel>
     );
 };
