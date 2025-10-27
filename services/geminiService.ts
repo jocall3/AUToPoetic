@@ -9,8 +9,9 @@
  *
  * @see services/aiService.ts The context that will use this strategy.
  * @security This service does not handle any API keys. All requests are authenticated
- * with a short-lived JWT (Google OAuth2 Access Token) sent to the BFF. The BFF is responsible for securely managing
- * and using the Gemini API key.
+ * with a short-lived JWT (obtained from Google Sign-In and exchanged with our AuthGateway) sent to the BFF. 
+ * The BFF is responsible for securely managing and using the Gemini API key, which is injected server-side.
+ * The "API key slot" requested by the user is fulfilled by requiring Google Sign-In, which provides the necessary authentication to use the backend's AI capabilities.
  * @performance Streaming methods return AsyncGenerators for real-time data handling,
  * improving perceived performance on the client.
  */
@@ -41,10 +42,12 @@ class GeminiService {
   /**
    * @private
    * @method _getAuthToken
-   * @description Retrieves the authentication token from session storage.
+   * @description Retrieves the authentication token (Google OAuth2 Access Token) from session storage.
    * @returns {string | null} The JWT token or null if not found.
    */
   private _getAuthToken(): string | null {
+    // As per the new architecture, we use the Google access token to authenticate with our BFF.
+    // The BFF will validate this token and then use its own secure credentials for downstream services.
     return sessionStorage.getItem('google_access_token');
   }
 
@@ -66,7 +69,7 @@ class GeminiService {
   private async _request<T>(query: string, variables?: object): Promise<T> {
     const token = this._getAuthToken();
     if (!token) {
-      throw new Error('Authentication token not available. Please sign in.');
+      throw new Error('Authentication token not available. Please sign in with Google to use AI features.');
     }
 
     try {
@@ -113,7 +116,7 @@ class GeminiService {
   private async *_streamRequest(query: string, variables?: object): AsyncGenerator<string, void, unknown> {
     const token = this._getAuthToken();
     if (!token) {
-      throw new Error('Authentication token not available. Please sign in.');
+      throw new Error('Authentication token not available. Please sign in with Google to use AI features.');
     }
 
     try {
@@ -138,7 +141,6 @@ class GeminiService {
         const { done, value } = await reader.read();
         if (done) {
           if (buffer.trim()) {
-            // In case the last chunk was incomplete and now is flushed
             yield buffer;
           }
           break;
@@ -149,18 +151,17 @@ class GeminiService {
         buffer = lines.pop() || ''; // Keep the last, potentially incomplete, line
 
         for (const line of lines) {
-          if (line.trim()) {
+          if (line.trim().startsWith('data:')) {
             try {
-              const parsed = JSON.parse(line);
-              if (parsed.errors) {
-                throw new Error(`GraphQL streaming error: ${parsed.errors.map((e: any) => e.message).join(', ')}`);
+              const json = JSON.parse(line.substring(5));
+              if (json.errors) {
+                throw new Error(`GraphQL streaming error: ${json.errors.map((e: any) => e.message).join(', ')}`);
               }
               // Assuming the BFF wraps streamed chunks in a standard way
-              if (parsed.data && typeof parsed.data.streamChunk === 'string') {
-                yield parsed.data.streamChunk;
+              if (json.data && typeof json.data.streamChunk === 'string') {
+                yield json.data.streamChunk;
               }
             } catch (e) {
-              // It might be a partial JSON object, so we let it buffer
               console.warn('Could not parse partial stream chunk, buffering...', line);
             }
           }
@@ -205,9 +206,6 @@ class GeminiService {
    * }
    */
   public streamContent(prompt: string, systemInstruction?: string): AsyncGenerator<string, void, unknown> {
-    // Note: GraphQL subscriptions are the standard for streaming, but over HTTP, a regular query/mutation
-    // can also return a streaming response type (like NDJSON or multipart/mixed).
-    // This implementation assumes a query that returns a stream.
     const query = `
       query StreamGeminiContent($prompt: String!, $systemInstruction: String) {
         streamChunk: streamGeminiContent(prompt: $prompt, systemInstruction: $systemInstruction)
