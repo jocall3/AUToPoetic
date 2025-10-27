@@ -1,144 +1,380 @@
-// Copyright James Burvel O’Callaghan III
-// President Citibank Demo Business Inc.
+/**
+ * @fileoverview SnippetVault micro-frontend.
+ * This component provides a user interface for managing reusable code snippets.
+ * It communicates with the BFF via GraphQL to perform CRUD operations and
+ * leverage AI-powered enhancements like code improvement and automatic tagging.
+ * All UI elements are sourced from the proprietary Core and Composite UI libraries.
+ *
+ * @see /services/core/snippet/ISnippetService.ts - for the backend service interface
+ * @see /ui/core/Button.tsx - for the Button component
+ * @security This component handles user-generated code. While the code is not executed
+ *           client-side, care is taken to properly render it as text to prevent XSS.
+ *           All AI operations are performed server-side.
+ * @performance The component uses GraphQL for data fetching and mutations.
+ *              A local search filter is implemented with useMemo for performance.
+ *              Large snippet lists could impact client-side filtering performance.
+ */
 
-import React, { useState, useEffect, useMemo } from 'react';
-import { LockClosedIcon, SparklesIcon, TrashIcon, ClipboardDocumentIcon, ArrowDownTrayIcon } from '../icons.tsx';
-import { useLocalStorage } from '../../hooks/useLocalStorage.ts';
-import { enhanceSnippetStream, generateTagsForCode } from '../../services/aiService.ts';
-import { LoadingSpinner } from '../shared/index.tsx';
-import { downloadFile } from '../../services/fileUtils.ts';
-import { useNotification } from '../../contexts/NotificationContext.tsx';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import {
+  Button,
+  Icon,
+  Input,
+  TextArea,
+  SidebarLayout,
+  Panel,
+  Header,
+  Heading,
+  Text,
+  Tag,
+  TagInput,
+  Spinner,
+} from '@jester/ui-core'; // Hypothetical Core UI library
+import { useGraphQLQuery, useGraphQLMutation } from '@jester/infra-services'; // Hypothetical infra layer
+import { downloadService } from '@jester/business-services'; // Hypothetical business layer service
+import { useNotification } from '@jester/composite-ui'; // Hypothetical composite UI hook
+import { Snippet } from '@jester/domain-models'; // Hypothetical domain models
 
-interface Snippet {
-    id: number; name: string; code: string; language: string; tags: string[];
-}
+// --- GraphQL Definitions ---
+
+const GET_SNIPPETS_QUERY = `
+  query GetSnippets {
+    snippets {
+      id
+      name
+      code
+      language
+      tags
+    }
+  }
+`;
+
+const CREATE_SNIPPET_MUTATION = `
+  mutation CreateSnippet($input: CreateSnippetInput!) {
+    createSnippet(input: $input) {
+      id
+      name
+      code
+      language
+      tags
+    }
+  }
+`;
+
+const UPDATE_SNIPPET_MUTATION = `
+  mutation UpdateSnippet($id: ID!, $input: UpdateSnippetInput!) {
+    updateSnippet(id: $id, input: $input) {
+      id
+      name
+      code
+      language
+      tags
+    }
+  }
+`;
+
+const DELETE_SNIPPET_MUTATION = `
+  mutation DeleteSnippet($id: ID!) {
+    deleteSnippet(id: $id)
+  }
+`;
+
+const ENHANCE_SNIPPET_MUTATION = `
+  mutation EnhanceSnippet($code: String!) {
+    enhanceSnippet(code: $code) {
+      enhancedCode
+    }
+  }
+`;
+
+const GENERATE_TAGS_MUTATION = `
+  mutation GenerateTags($code: String!) {
+    generateTagsForSnippet(code: $code)
+  }
+`;
 
 const langToExt: Record<string, string> = {
-    javascript: 'js',
-    typescript: 'ts',
-    python: 'py',
-    css: 'css',
-    html: 'html',
-    json: 'json',
-    markdown: 'md',
-    plaintext: 'txt',
+  javascript: 'js',
+  typescript: 'ts',
+  python: 'py',
+  css: 'css',
+  html: 'html',
+  json: 'json',
+  markdown: 'md',
+  plaintext: 'txt',
 };
 
+/**
+ * Renders the Snippet Vault feature, allowing users to manage a collection of code snippets.
+ * @returns {React.ReactElement} The rendered SnippetVault component.
+ * @example
+ * <SnippetVault />
+ */
 export const SnippetVault: React.FC = () => {
-    const [snippets, setSnippets] = useLocalStorage<Snippet[]>('devcore_snippets', [{ id: 1, name: 'React Hook Boilerplate', language: 'javascript', code: `import { useState } from 'react';\n\nconst useCustomHook = () => {\n  const [value, setValue] = useState(null);\n  return { value, setValue };\n};`, tags: ['react', 'hook'] }]);
-    const [activeSnippet, setActiveSnippet] = useState<Snippet | null>(null);
-    const [isEnhancing, setIsEnhancing] = useState(false);
-    const [searchTerm, setSearchTerm] = useState('');
-    const [isEditingName, setIsEditingName] = useState(false);
-    const { addNotification } = useNotification();
+  const [activeSnippetId, setActiveSnippetId] = useState<string | null>(null);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [isEditingName, setIsEditingName] = useState(false);
+  const { addNotification } = useNotification();
 
-    const filteredSnippets = useMemo(() => {
-        if (!searchTerm) return snippets;
-        const lowerSearch = searchTerm.toLowerCase();
-        return snippets.filter((s: Snippet) => 
-            s.name.toLowerCase().includes(lowerSearch) || 
-            s.code.toLowerCase().includes(lowerSearch) ||
-            (s.tags && s.tags.some(t => t.toLowerCase().includes(lowerSearch)))
-        );
-    }, [snippets, searchTerm]);
+  // --- Data Fetching & Mutations ---
+  const { data, loading, error: queryError } = useGraphQLQuery(GET_SNIPPETS_QUERY);
+  const snippets: Snippet[] = data?.snippets || [];
 
-    useEffect(() => {
-        if (!activeSnippet && filteredSnippets.length > 0) setActiveSnippet(filteredSnippets[0]);
-        if (activeSnippet) setActiveSnippet(snippets.find((s: Snippet) => s.id === activeSnippet.id) || null);
-    }, [snippets, activeSnippet, filteredSnippets]);
+  const [createSnippet] = useGraphQLMutation(CREATE_SNIPPET_MUTATION, {
+    refetchQueries: [{ query: GET_SNIPPETS_QUERY }],
+  });
+  const [updateSnippet] = useGraphQLMutation(UPDATE_SNIPPET_MUTATION);
+  const [deleteSnippet] = useGraphQLMutation(DELETE_SNIPPET_MUTATION, {
+    refetchQueries: [{ query: GET_SNIPPETS_QUERY }],
+  });
+  const [enhanceSnippet, { loading: isEnhancing }] = useGraphQLMutation(ENHANCE_SNIPPET_MUTATION);
+  const [generateTags, { loading: isTagging }] = useGraphQLMutation(GENERATE_TAGS_MUTATION);
 
-    const updateSnippet = (snippet: Snippet) => {
-        setSnippets(snippets.map((s: Snippet) => s.id === snippet.id ? snippet : s));
-        setActiveSnippet(snippet);
-    };
+  const activeSnippet = useMemo(() => snippets.find((s) => s.id === activeSnippetId), [snippets, activeSnippetId]);
 
-    const handleEnhance = async () => {
-        if (!activeSnippet) return;
-        setIsEnhancing(true);
-        try {
-            const stream = enhanceSnippetStream(activeSnippet.code);
-            let fullResponse = '';
-            for await (const chunk of stream) {
-                fullResponse += chunk;
-                updateSnippet({ ...activeSnippet, code: fullResponse.replace(/^```(?:\w+\n)?/, '').replace(/```$/, '') });
-            }
-        } finally { setIsEnhancing(false); }
-    };
-    
-    const handleAiTagging = async (snippet: Snippet) => {
-        if (!snippet.code.trim()) return;
-        try {
-            const suggestedTags = await generateTagsForCode(snippet.code);
-            const newTags = [...new Set([...(snippet.tags || []), ...suggestedTags])];
-            updateSnippet({...snippet, tags: newTags});
-            addNotification('AI tags added!', 'success');
-        } catch(e) {
-            console.error("AI tagging failed:", e);
-            addNotification('AI tagging failed.', 'error');
-        }
-    };
-
-    const handleAddNew = () => {
-        const newSnippet: Snippet = { id: Date.now(), name: 'New Snippet', language: 'plaintext', code: '', tags: [] };
-        setSnippets([...snippets, newSnippet]);
-        setActiveSnippet(newSnippet);
-    };
-    
-    const handleDelete = (id: number) => {
-        setSnippets(snippets.filter((s: Snippet) => s.id !== id));
-        if(activeSnippet?.id === id) setActiveSnippet(filteredSnippets.length > 1 ? filteredSnippets[0] : null);
-    };
-    
-    const handleDownload = () => {
-        if(!activeSnippet) return;
-        const extension = langToExt[activeSnippet.language] || 'txt';
-        const filename = `${activeSnippet.name.replace(/\s/g, '_')}.${extension}`;
-        downloadFile(activeSnippet.code, filename);
-    }
-
-    const handleNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        if (activeSnippet) updateSnippet({...activeSnippet, name: e.target.value});
-    };
-    
-    const handleTagsChange = (e: React.KeyboardEvent<HTMLInputElement>) => {
-        if (e.key === 'Enter' && activeSnippet) {
-            const newTag = e.currentTarget.value.trim();
-            if (newTag && !activeSnippet.tags.includes(newTag)) {
-                updateSnippet({...activeSnippet, tags: [...(activeSnippet.tags ?? []), newTag]});
-            }
-            e.currentTarget.value = '';
-        }
-    };
-
-    return (
-        <div className="h-full flex flex-col p-4 sm:p-6 lg:p-8 text-text-primary">
-            <header className="mb-6"><h1 className="text-3xl font-bold flex items-center"><LockClosedIcon /><span className="ml-3">Snippet Vault</span></h1><p className="text-text-secondary mt-1">Store, search, tag, and enhance your reusable code snippets with AI.</p></header>
-            <div className="flex-grow flex gap-6 min-h-0">
-                <aside className="w-1/3 bg-surface border border-border p-4 rounded-lg flex flex-col">
-                    <input type="text" placeholder="Search snippets..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="w-full px-3 py-1.5 mb-3 rounded-md bg-background border border-border text-sm"/>
-                    <ul className="space-y-2 flex-grow overflow-y-auto pr-2">{filteredSnippets.map((s: Snippet) => (<li key={s.id} className="group flex items-center justify-between"><button onClick={() => setActiveSnippet(s)} className={`w-full text-left px-3 py-2 rounded-md ${activeSnippet?.id === s.id ? 'bg-primary/10 text-primary' : 'hover:bg-gray-100 dark:hover:bg-slate-700'}`}>{s.name}</button><div className="flex opacity-0 group-hover:opacity-100 transition-opacity"><button onClick={() => {navigator.clipboard.writeText(s.code); addNotification("Copied snippet!", "success")}} className="ml-2 p-1 text-text-secondary hover:text-primary" title="Copy"><ClipboardDocumentIcon /></button><button onClick={() => handleDelete(s.id)} className="ml-2 p-1 text-text-secondary hover:text-red-500" title="Delete"><TrashIcon/></button></div></li>))}</ul>
-                    <div className="mt-4 pt-4 border-t border-border"><button onClick={handleAddNew} className="btn-primary w-full text-sm py-2">Add New Snippet</button></div>
-                </aside>
-                <main className="w-2/3 flex flex-col">
-                    {activeSnippet ? (<>
-                        <div className="flex justify-between items-center mb-2">
-                            {isEditingName ? <input type="text" value={activeSnippet.name} onChange={handleNameChange} onBlur={() => setIsEditingName(false)} autoFocus className="text-lg font-bold bg-gray-100 dark:bg-slate-700 rounded px-2"/> : <h3 onDoubleClick={() => setIsEditingName(true)} className="text-lg font-bold cursor-pointer">{activeSnippet.name}</h3>}
-                            <div className="flex gap-2">
-                                <button onClick={() => handleAiTagging(activeSnippet)} className="flex items-center gap-2 px-3 py-1 bg-teal-500/80 text-white font-bold text-xs rounded-md"><SparklesIcon /> AI Tag</button>
-                                <button onClick={handleEnhance} disabled={isEnhancing} className="flex items-center gap-2 px-3 py-1 bg-purple-500/80 text-white font-bold text-xs rounded-md disabled:bg-gray-400"><SparklesIcon /> AI Enhance</button>
-                                <button onClick={handleDownload} className="flex items-center gap-1 px-3 py-1 bg-gray-100 dark:bg-slate-700 text-xs rounded-md"><ArrowDownTrayIcon className="w-4 h-4"/> Download</button>
-                            </div>
-                        </div>
-                        <textarea value={activeSnippet.code} onChange={e => updateSnippet({...activeSnippet, code: e.target.value})} className="flex-grow p-4 bg-surface border border-border rounded-md resize-none font-mono text-sm focus:ring-2 focus:ring-primary focus:outline-none"/>
-                        <div className="mt-2 text-xs text-text-secondary">
-                           <div className="flex items-center gap-2 flex-wrap">
-                             <span className="font-bold">Tags:</span> {(activeSnippet.tags ?? []).map(t => <span key={t} className="bg-gray-200 dark:bg-slate-700 px-2 py-0.5 rounded-full">{t}</span>)}
-                             <input type="text" placeholder="+ Add tag" onKeyDown={handleTagsChange} className="bg-transparent border-b border-border focus:outline-none focus:border-primary w-24 text-xs px-1"/>
-                           </div>
-                        </div>
-                    </>) : (<div className="flex-grow flex items-center justify-center bg-background border border-border rounded-lg text-text-secondary">Select a snippet or create a new one.</div>)}
-                </main>
-            </div>
-        </div>
+  const filteredSnippets = useMemo(() => {
+    if (!searchTerm) return snippets;
+    const lowerSearch = searchTerm.toLowerCase();
+    return snippets.filter((s: Snippet) =>
+      s.name.toLowerCase().includes(lowerSearch) ||
+      s.code.toLowerCase().includes(lowerSearch) ||
+      (s.tags && s.tags.some(t => t.toLowerCase().includes(lowerSearch)))
     );
+  }, [snippets, searchTerm]);
+
+  useEffect(() => {
+    if (!activeSnippetId && filteredSnippets.length > 0) {
+      setActiveSnippetId(filteredSnippets[0].id);
+    }
+  }, [filteredSnippets, activeSnippetId]);
+
+  /**
+   * Handles the AI-driven enhancement of the active snippet's code.
+   * @performance This is an async operation that communicates with the backend.
+   *              UI feedback is provided via the `isEnhancing` loading state.
+   */
+  const handleEnhance = useCallback(async () => {
+    if (!activeSnippet) return;
+
+    try {
+      const result = await enhanceSnippet({ variables: { code: activeSnippet.code } });
+      const enhancedCode = result.data.enhanceSnippet.enhancedCode;
+      
+      // Optimistically update or use mutation response to update cache
+      await updateSnippet({
+        variables: {
+          id: activeSnippet.id,
+          input: { code: enhancedCode.replace(/^```(?:\w+\n)?/, '').replace(/```$/, '') },
+        },
+      });
+      addNotification('Snippet enhanced by AI!', 'success');
+    } catch (e) {
+      const err = e as Error;
+      addNotification(`Enhancement failed: ${err.message}`, 'error');
+    }
+  }, [activeSnippet, enhanceSnippet, updateSnippet, addNotification]);
+
+  /**
+   * Uses AI to generate and add relevant tags to a snippet.
+   * @param {Snippet} snippet The snippet to generate tags for.
+   */
+  const handleAiTagging = useCallback(async (snippet: Snippet) => {
+    if (!snippet.code.trim()) return;
+
+    try {
+      const result = await generateTags({ variables: { code: snippet.code } });
+      const suggestedTags = result.data.generateTagsForSnippet;
+      const newTags = [...new Set([...(snippet.tags || []), ...suggestedTags])];
+      
+      await updateSnippet({
+        variables: { id: snippet.id, input: { tags: newTags } },
+      });
+      addNotification('AI tags added!', 'success');
+    } catch (e) {
+      const err = e as Error;
+      addNotification(`AI tagging failed: ${err.message}`, 'error');
+    }
+  }, [generateTags, updateSnippet, addNotification]);
+
+  /**
+   * Creates a new, empty snippet and adds it to the list.
+   */
+  const handleAddNew = useCallback(async () => {
+    try {
+      const result = await createSnippet({
+        variables: {
+          input: { name: 'New Snippet', code: '', language: 'plaintext', tags: [] },
+        },
+      });
+      setActiveSnippetId(result.data.createSnippet.id);
+    } catch (e) {
+      const err = e as Error;
+      addNotification(`Failed to create snippet: ${err.message}`, 'error');
+    }
+  }, [createSnippet, addNotification]);
+
+  /**
+   * Deletes a snippet from the vault.
+   * @param {string} id The ID of the snippet to delete.
+   */
+  const handleDelete = useCallback(async (id: string) => {
+    try {
+      await deleteSnippet({ variables: { id } });
+      if (activeSnippetId === id) {
+        setActiveSnippetId(filteredSnippets.length > 1 ? filteredSnippets[0].id : null);
+      }
+      addNotification('Snippet deleted.', 'info');
+    } catch (e) {
+      const err = e as Error;
+      addNotification(`Failed to delete snippet: ${err.message}`, 'error');
+    }
+  }, [deleteSnippet, addNotification, activeSnippetId, filteredSnippets]);
+
+  /**
+   * Triggers a browser download of the active snippet's code.
+   */
+  const handleDownload = useCallback(() => {
+    if (!activeSnippet) return;
+    const extension = langToExt[activeSnippet.language] || 'txt';
+    const filename = `${activeSnippet.name.replace(/\s/g, '_')}.${extension}`;
+    downloadService.downloadText(activeSnippet.code, filename);
+  }, [activeSnippet]);
+
+  const handleNameBlur = (e: React.FocusEvent<HTMLInputElement>) => {
+    setIsEditingName(false);
+    if (activeSnippet && activeSnippet.name !== e.target.value) {
+      updateSnippet({ variables: { id: activeSnippet.id, input: { name: e.target.value } } });
+    }
+  };
+
+  /**
+   * Updates the tags for the active snippet.
+   * @param {string[]} newTags An array of the new tags.
+   */
+  const handleTagsUpdate = (newTags: string[]) => {
+    if (activeSnippet) {
+      updateSnippet({
+        variables: { id: activeSnippet.id, input: { tags: newTags } },
+      });
+    }
+  };
+
+  if (loading) {
+    return <div className="flex h-full w-full items-center justify-center"><Spinner size="large" /></div>;
+  }
+
+  if (queryError) {
+    return <div className="flex h-full w-full items-center justify-center text-red-500">Error loading snippets: {queryError.message}</div>;
+  }
+
+  const sidebarContent = (
+    <Panel className="flex flex-col h-full">
+      <Panel.Header>
+        <Input
+          placeholder="Search snippets..."
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          aria-label="Search snippets"
+        />
+      </Panel.Header>
+      <Panel.Body className="flex-grow overflow-y-auto pr-2">
+        <ul className="space-y-2">
+          {filteredSnippets.map((s: Snippet) => (
+            <li key={s.id} className="group flex items-center justify-between">
+              <Button
+                variant={activeSnippet?.id === s.id ? 'primary' : 'ghost'}
+                onClick={() => setActiveSnippetId(s.id)}
+                className="w-full text-left justify-start"
+              >
+                {s.name}
+              </Button>
+              <div className="flex opacity-0 group-hover:opacity-100 transition-opacity">
+                <Button variant="ghost" size="icon" onClick={() => { navigator.clipboard.writeText(s.code); addNotification("Copied snippet!", "success"); }} title="Copy">
+                  <Icon name="clipboard-document" />
+                </Button>
+                <Button variant="ghost" size="icon" color="danger" onClick={() => handleDelete(s.id)} title="Delete">
+                  <Icon name="trash" />
+                </Button>
+              </div>
+            </li>
+          ))}
+        </ul>
+      </Panel.Body>
+      <Panel.Footer>
+        <Button variant="primary" onClick={handleAddNew} className="w-full">
+          Add New Snippet
+        </Button>
+      </Panel.Footer>
+    </Panel>
+  );
+
+  const mainContent = (
+    <Panel className="flex flex-col h-full">
+      {activeSnippet ? (
+        <>
+          <Header className="flex justify-between items-center">
+            {isEditingName ? (
+              <Input
+                defaultValue={activeSnippet.name}
+                onBlur={handleNameBlur}
+                onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
+                autoFocus
+                className="text-lg font-bold"
+                aria-label="Snippet name"
+              />
+            ) : (
+              <Heading as="h3" onDoubleClick={() => setIsEditingName(true)} className="cursor-pointer">
+                {activeSnippet.name}
+              </Heading>
+            )}
+            <div className="flex gap-2">
+              <Button onClick={() => handleAiTagging(activeSnippet)} disabled={isTagging} size="sm" variant="secondary">
+                <Icon name="sparkles" /> {isTagging ? 'Tagging...' : 'AI Tag'}
+              </Button>
+              <Button onClick={handleEnhance} disabled={isEnhancing} size="sm" variant="secondary">
+                <Icon name="sparkles" /> {isEnhancing ? 'Enhancing...' : 'AI Enhance'}
+              </Button>
+              <Button onClick={handleDownload} size="sm" variant="ghost">
+                <Icon name="arrow-down-tray" /> Download
+              </Button>
+            </div>
+          </Header>
+          <TextArea
+            value={activeSnippet.code}
+            onChange={(e) => updateSnippet({
+              variables: { id: activeSnippet.id, input: { code: e.target.value } },
+              optimisticResponse: { updateSnippet: { ...activeSnippet, code: e.target.value, __typename: 'Snippet' } }
+            })}
+            className="flex-grow font-mono text-sm"
+            aria-label="Snippet code"
+          />
+          <Panel.Footer>
+            <TagInput
+              tags={activeSnippet.tags ?? []}
+              onTagsChange={handleTagsUpdate}
+              placeholder="+ Add tag"
+              aria-label="Snippet tags"
+            />
+          </Panel.Footer>
+        </>
+      ) : (
+        <div className="flex-grow flex items-center justify-center text-text-secondary">
+          Select a snippet or create a new one.
+        </div>
+      )}
+    </Panel>
+  );
+  
+  return (
+    <div className="h-full p-4 sm:p-6 lg:p-8">
+      <Header>
+        <Heading as="h1" className="flex items-center gap-3">
+          <Icon name="lock-closed" />
+          Snippet Vault
+        </Heading>
+        <Text variant="secondary">Store, search, tag, and enhance your reusable code snippets with AI.</Text>
+      </Header>
+      <SidebarLayout sidebar={sidebarContent} main={mainContent} />
+    </div>
+  );
 };

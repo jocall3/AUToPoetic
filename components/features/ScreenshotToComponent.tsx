@@ -1,96 +1,200 @@
-// Copyright James Burvel O’Callaghan III
-// President Citibank Demo Business Inc.
+/**
+ * @file ScreenshotToComponent.tsx
+ * @summary This micro-frontend component allows users to upload or paste a screenshot of a UI element and receive AI-generated React/Tailwind code.
+ * @description This component implements a complete user flow for visual-to-code generation. It leverages a dedicated web worker for all heavy processing, including image-to-Base64 conversion and streaming communication with the Backend-for-Frontend (BFF) via GraphQL. This ensures the main UI thread remains responsive. It utilizes the proprietary UI framework for all visual elements.
+ * @owner Elite AI Implementation Team
+ * @date 2024-07-20
+ * @version 2.0.0
+ */
 
-import React, { useState, useCallback, useRef } from 'react';
-import { generateComponentFromImageStream } from '../../services/index.ts';
-import { PhotoIcon, ArrowDownTrayIcon } from '../icons.tsx';
-import { LoadingSpinner, MarkdownRenderer } from '../shared/index.tsx';
-import { fileToBase64, blobToDataURL, downloadFile } from '../../services/fileUtils.ts';
+import React, { useReducer, useCallback, useRef, useEffect } from 'react';
 
+// Proprietary UI Framework Imports
+import { Panel, Layout, Typography, Button, Icon, FileUploadZone } from 'ui/core';
+import { CodeViewer, LoadingState } from 'ui/composite';
+
+// Service Layer & Hooks for new architecture
+import { useWorkerPool } from 'hooks/useWorkerPool';
+import { useNotification } from 'contexts/NotificationContext';
+import { downloadFile } from 'services/infrastructure/fileUtilsAdapter';
+
+/**
+ * @typedef {'idle' | 'processingImage' | 'streamingCode' | 'success' | 'error'}
+ * @description Represents the possible states of the component's state machine.
+ */
+type ComponentState = 'idle' | 'processingImage' | 'streamingCode' | 'success' | 'error';
+
+/**
+ * @interface State
+ * @description Defines the shape of the component's state, managed by a reducer.
+ */
+interface State {
+  status: ComponentState;
+  previewImage: string | null;
+  generatedCode: string;
+  error: string | null;
+}
+
+/**
+ * @typedef Action
+ * @description Defines the actions that can be dispatched to update the component's state.
+ */
+type Action = 
+  | { type: 'START_PROCESSING'; payload: { previewImage: string } }
+  | { type: 'STREAM_CHUNK'; payload: string }
+  | { type: 'STREAM_COMPLETE' }
+  | { type: 'ERROR'; payload: string }
+  | { type: 'RESET' };
+
+const initialState: State = {
+  status: 'idle',
+  previewImage: null,
+  generatedCode: '',
+  error: null,
+};
+
+/**
+ * Reducer function for managing the component's state machine.
+ * @param {State} state - The current state.
+ * @param {Action} action - The dispatched action.
+ * @returns {State} The new state.
+ */
+const reducer = (state: State, action: Action): State => {
+  switch (action.type) {
+    case 'START_PROCESSING':
+      return { ...initialState, status: 'processingImage', previewImage: action.payload.previewImage };
+    case 'STREAM_CHUNK':
+      return { ...state, status: 'streamingCode', generatedCode: state.generatedCode + action.payload };
+    case 'STREAM_COMPLETE':
+      return { ...state, status: 'success' };
+    case 'ERROR':
+      return { ...state, status: 'error', error: action.payload };
+    case 'RESET':
+      return initialState;
+    default:
+      return state;
+  }
+};
+
+/**
+ * @summary A micro-frontend for converting UI screenshots into React/Tailwind code.
+ * @description This component provides a user interface for uploading or pasting an image. The image processing and AI code generation are offloaded to a dedicated web worker to maintain UI responsiveness. The generated code is streamed back and displayed in a code viewer.
+ * @performance All intensive tasks (image conversion, API communication) are handled by a web worker, preventing any blocking of the main thread. This ensures a smooth and responsive user experience even during heavy processing.
+ * @security Image data is sent directly to the secure BFF via the web worker. The client does not store the image long-term. The BFF handles all interactions with the AI service, ensuring no sensitive keys are exposed on the client-side.
+ * @example
+ * <ScreenshotToComponent />
+ */
 export const ScreenshotToComponent: React.FC = () => {
-    const [previewImage, setPreviewImage] = useState<string | null>(null);
-    const [rawCode, setRawCode] = useState('');
-    const [isLoading, setIsLoading] = useState(false);
-    const [error, setError] = useState('');
-    const fileInputRef = useRef<HTMLInputElement>(null);
+  const [state, dispatch] = useReducer(reducer, initialState);
+  const { addNotification } = useNotification();
+  const worker = useWorkerPool('aiTasks'); // Get a worker from the 'aiTasks' pool
 
-    const handleGenerate = async (base64Image: string) => {
-        setIsLoading(true);
-        setError('');
-        setRawCode('');
-        try {
-            const stream = generateComponentFromImageStream(base64Image);
-            let fullResponse = '';
-            for await (const chunk of stream) {
-                fullResponse += chunk;
-                setRawCode(fullResponse.replace(/^```(?:\w+\n)?/, '').replace(/```$/, ''));
-            }
-        } catch (err) {
-            setError(err instanceof Error ? err.message : 'An unknown error occurred.');
-        } finally {
-            setIsLoading(false);
-        }
+  useEffect(() => {
+    if (!worker) return;
+
+    const handleMessage = (event: MessageEvent) => {
+      const { type, payload } = event.data;
+      switch (type) {
+        case 'COMPONENT_STREAM_CHUNK':
+          dispatch({ type: 'STREAM_CHUNK', payload });
+          break;
+        case 'COMPONENT_STREAM_END':
+          dispatch({ type: 'STREAM_COMPLETE' });
+          addNotification('Code generation complete!', 'success');
+          break;
+        case 'COMPONENT_GENERATION_ERROR':
+          dispatch({ type: 'ERROR', payload });
+          addNotification('Code generation failed.', 'error');
+          break;
+      }
     };
 
-    const processImageBlob = async (blob: Blob) => {
-        try {
-            const [dataUrl, base64Image] = await Promise.all([blobToDataURL(blob), fileToBase64(blob as File)]);
-            setPreviewImage(dataUrl);
-            handleGenerate(base64Image);
-        } catch (e) {
-            setError('Could not process the image.');
-        }
-    };
-    
-    const handlePaste = useCallback(async (event: React.ClipboardEvent) => {
-        const items = event.clipboardData.items;
-        for (const item of items) {
-            if (item.type.indexOf('image') !== -1) {
-                const blob = item.getAsFile();
-                if (blob) await processImageBlob(blob);
-                return;
-            }
-        }
-    }, []);
+    worker.addEventListener('message', handleMessage);
+    return () => worker.removeEventListener('message', handleMessage);
+  }, [worker, addNotification]);
 
-    const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
-        const file = event.target.files?.[0];
-        if (file) await processImageBlob(file);
-    };
+  /**
+   * @function handleImageProcess
+   * @description Processes an image file, generates a preview, and dispatches the task to a web worker.
+   * @param {File} file The image file to process.
+   * @security The File object is transferred to the worker, minimizing main-thread memory impact.
+   * @performance The use of `createObjectURL` is efficient for creating temporary image previews.
+   */
+  const handleImageProcess = useCallback((file: File) => {
+    if (!worker) {
+      dispatch({ type: 'ERROR', payload: 'Worker service is not available.' });
+      return;
+    }
 
-    return (
-        <div className="h-full flex flex-col p-4 sm:p-6 lg:p-8 text-text-primary">
-            <header className="mb-6"><h1 className="text-3xl font-bold flex items-center"><PhotoIcon /><span className="ml-3">AI Screenshot-to-Component</span></h1><p className="text-text-secondary mt-1">Paste or upload a screenshot of a UI element to generate React/Tailwind code.</p></header>
-            <div className="flex-grow grid grid-cols-1 lg:grid-cols-2 gap-6 min-h-0">
-                <div onPaste={handlePaste} className="flex flex-col items-center justify-center bg-surface p-6 rounded-lg border-2 border-dashed border-border focus:outline-none focus:border-primary overflow-y-auto" tabIndex={0}>
-                    {previewImage ? (<img src={previewImage} alt="Pasted content" className="max-w-full max-h-full object-contain rounded-md shadow-lg" />) : (<div className="text-center text-text-secondary">
-                            <h2 className="text-xl font-bold text-text-primary">Paste an image here</h2>
-                            <p className="mb-2">(Cmd/Ctrl + V)</p>
-                            <p className="text-sm">or</p>
-                            <button onClick={() => fileInputRef.current?.click()} className="mt-2 btn-primary px-4 py-2 text-sm">Upload File</button>
-                            <input type="file" ref={fileInputRef} onChange={handleFileChange} accept="image/*" className="hidden"/>
-                        </div>)}
-                </div>
-                <div className="flex flex-col h-full">
-                    <div className="flex justify-between items-center mb-2">
-                        <label className="text-sm font-medium text-text-secondary">Generated Code</label>
-                        {rawCode && !isLoading && (
-                            <div className="flex items-center gap-2">
-                                <button onClick={() => navigator.clipboard.writeText(rawCode)} className="px-3 py-1 bg-gray-100 text-xs rounded-md hover:bg-gray-200">Copy Code</button>
-                                <button onClick={() => downloadFile(rawCode, 'Component.tsx', 'text/typescript')} className="flex items-center gap-1 px-3 py-1 bg-gray-100 text-xs rounded-md hover:bg-gray-200">
-                                    <ArrowDownTrayIcon className="w-4 h-4" /> Download
-                                </button>
-                            </div>
-                        )}
-                    </div>
-                    <div className="flex-grow bg-background border border-border rounded-md overflow-y-auto">
-                        {isLoading && (<div className="flex items-center justify-center h-full"><LoadingSpinner /></div>)}
-                        {error && <p className="p-4 text-red-500">{error}</p>}
-                        {rawCode && !isLoading && <MarkdownRenderer content={`\`\`\`tsx\n${rawCode}\n\`\`\``} />}
-                        {!isLoading && !rawCode && !error && (<div className="text-text-secondary h-full flex items-center justify-center">Generated component code will appear here.</div>)}
-                    </div>
-                </div>
-            </div>
-        </div>
-    );
+    const previewUrl = URL.createObjectURL(file);
+    dispatch({ type: 'START_PROCESSING', payload: { previewImage: previewUrl } });
+
+    worker.postMessage({ 
+      type: 'GENERATE_COMPONENT_FROM_IMAGE', 
+      payload: { file } 
+    });
+
+  }, [worker]);
+
+  const handleDownload = useCallback(() => {
+    if (state.generatedCode) {
+      downloadFile(state.generatedCode, 'Component.tsx', 'text/typescript');
+      addNotification('Component code downloaded.', 'info');
+    }
+  }, [state.generatedCode, addNotification]);
+
+  return (
+    <Panel className="h-full flex flex-col">
+      <Panel.Header>
+        <Icon name="PhotoIcon" />
+        <Typography.Title>AI Screenshot-to-Component</Typography.Title>
+        <Typography.Text subtle>Paste or upload a UI screenshot to generate React/Tailwind code.</Typography.Text>
+      </Panel.Header>
+      <Panel.Body as={Layout.Grid} columns={2} gap="large" className="flex-grow min-h-0">
+        <Layout.Column className="flex flex-col">
+          <FileUploadZone
+            onFileDrop={handleImageProcess}
+            onPaste={handleImageProcess}
+            disabled={state.status !== 'idle' && state.status !== 'success'}
+            className="flex-grow"
+          >
+            {state.previewImage ? (
+              <img src={state.previewImage} alt="UI Screenshot Preview" className="max-w-full max-h-full object-contain rounded-md shadow-lg" />
+            ) : (
+              <div className="text-center">
+                <Typography.Header level={2}>Paste an image here</Typography.Header>
+                <Typography.Text subtle>(Cmd/Ctrl + V) or click to upload</Typography.Text>
+              </div>
+            )}
+          </FileUploadZone>
+        </Layout.Column>
+
+        <Layout.Column className="flex flex-col min-h-0">
+          <div className="flex justify-between items-center mb-2">
+            <Typography.Text as="label" className="font-medium">Generated Code</Typography.Text>
+            {state.generatedCode && state.status === 'success' && (
+              <div className="flex items-center gap-2">
+                <Button variant="secondary" size="small" onClick={() => { navigator.clipboard.writeText(state.generatedCode); addNotification('Code copied!', 'info'); }}>Copy Code</Button>
+                <Button variant="secondary" size="small" icon={<Icon name="ArrowDownTrayIcon" />} onClick={handleDownload}>Download</Button>
+              </div>
+            )}
+          </div>
+          <div className="flex-grow border border-border rounded-md overflow-hidden bg-background">
+            {(state.status === 'processingImage' || state.status === 'streamingCode') && !state.error && (
+              <LoadingState message={state.status === 'processingImage' ? 'Processing image...' : 'Generating code...'} />
+            )}
+            {state.error && (
+              <Panel.ErrorState title="Generation Failed" message={state.error} />
+            )}
+            {state.generatedCode && (
+              <CodeViewer code={state.generatedCode} language="tsx" />
+            )}
+            {state.status === 'idle' && (
+              <Panel.EmptyState message="Generated component code will appear here." />
+            )}
+          </div>
+        </Layout.Column>
+      </Panel.Body>
+    </Panel>
+  );
 };
