@@ -1,0 +1,32 @@
+{
+  "name": "@devcore/orchestration",
+  "version": "1.0.0",
+  "description": "Resource Orchestrator and Worker Pool Manager for the DevCore AI Toolkit, handling predictive resource fetching and offloading computations to a web worker pool.",
+  "main": "./dist/index.js",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "vite build",
+    "dev": "vite",
+    "lint": "tsc --noEmit",
+    "docs": "typedoc"
+  },
+  "dependencies": {
+    "comlink": "^4.4.1",
+    "react": "18.2.0",
+    "react-dom": "18.2.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.2",
+    "vite": "^7.1.3",
+    "vite-plugin-dts": "^3.9.1",
+    "typedoc": "^0.26.4"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "license": "MIT"
+}

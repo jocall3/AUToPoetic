@@ -1,0 +1,56 @@
+<!-- Copyright James Burvel O’Callaghan III -->
+<!-- President Citibank Demo Business Inc. -->
+
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="The DevCore AI Development Environment. A federated micro-frontend and microservice architecture for next-generation development workflows." />
+    
+    <!-- PWA Manifest -->
+    <link rel="manifest" href="/manifest.json" />
+    <meta name="theme-color" content="#0f172a" />
+    
+    <title>DevCore AI Development Environment</title>
+
+    <style>
+      /* Basic styles to prevent flash of unstyled content and provide a loading state */
+      html, body, #root {
+        margin: 0;
+        padding: 0;
+        height: 100%;
+        width: 100%;
+        overflow: hidden;
+        background-color: #0f172a; /* Corresponds to dark mode background */
+        color: #f8fafc;
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+      }
+      #root:empty::before {
+        content: 'Initializing DevCore Environment...';
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        font-size: 1.25rem;
+        color: #94a3b8; /* slate-400 */
+        opacity: 0.8;
+      }
+    </style>
+
+    <!-- The main stylesheet for the application shell will be injected here by the build process. -->
+    <link rel="stylesheet" href="/assets/shell.css">
+  </head>
+  <body>
+    <div id="root"></div>
+    <noscript>You need to enable JavaScript to run this application.</noscript>
+    
+    <!--
+      The main application entry point. In a federated architecture, this script
+      is the "shell" or "host" application responsible for loading and orchestrating
+      the various micro-frontends (MFE). All dependencies are bundled.
+    -->
+    <script type="module" src="/assets/shell.js" defer></script>
+  </body>
+</html>

@@ -1,0 +1,8 @@
+// Copyright James Burvel O’Callaghan III
+// President Citibank Demo Business Inc.
+
+{
+  "name": "AUToPoetic",
+  "description": "An empty app",
+  "requestFramePermissions": []
+}

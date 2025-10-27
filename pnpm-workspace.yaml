@@ -1,0 +1,12 @@
+packages:
+  # Host applications (e.g., the main shell, the BFF)
+  - 'apps/*'
+
+  # Independently deployable micro-frontend applications
+  - 'micro-frontends/*'
+
+  # Shared libraries, UI components, and core utilities
+  - 'packages/*'
+
+  # Backend-for-Frontend (BFF) and microservices
+  - 'services/*'

@@ -1,0 +1,91 @@
+{
+  "compilerOptions": {
+    "target": "ESNext",
+    "module": "ESNext",
+    "lib": [
+      "ESNext",
+      "DOM",
+      "DOM.Iterable",
+      "WebWorker"
+    ],
+    "jsx": "react-jsx",
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "baseUrl": ".",
+    "paths": {
+      "@/components/*": [
+        "components/*"
+      ],
+      "@/contexts/*": [
+        "contexts/*"
+      ],
+      "@/hooks/*": [
+        "hooks/*"
+      ],
+      "@/services/core/*": [
+        "services/core/*"
+      ],
+      "@/services/business/*": [
+        "services/business/*"
+      ],
+      "@/services/infrastructure/*": [
+        "services/infrastructure/*"
+      ],
+      "@/lib/core-ui/*": [
+        "lib/core-ui/*"
+      ],
+      "@/lib/composite-ui/*": [
+        "lib/composite-ui/*"
+      ],
+      "@/lib/theme/*": [
+        "lib/theme/*"
+      ],
+      "@/utils/*": [
+        "utils/*"
+      ],
+      "@/types/*": [
+        "types/*"
+      ],
+      "@/workers/*": [
+        "workers/*"
+      ],
+      "@/public/*": [
+        "public/*"
+      ]
+    },
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    "forceConsistentCasingInFileNames": true,
+    "esModuleInterop": true,
+    "allowJs": true,
+    "checkJs": true,
+    "skipLibCheck": true,
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true,
+    "noEmit": true,
+    "useDefineForClassFields": false
+  },
+  "include": [
+    "**/*.ts",
+    "**/*.tsx",
+    "**/*.js",
+    "**/*.jsx",
+    "vite.config.ts",
+    "tailwind.config.js",
+    "postcss.config.js"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "web"
+  ],
+  "references": [
+    {
+      "path": "./tsconfig.server.json"
+    }
+  ]
+}

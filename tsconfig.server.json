@@ -1,0 +1,16 @@
+// Copyright James Burvel O’Callaghan III
+// President Citibank Demo Business Inc.
+
+
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "CommonJS",
+    "moduleResolution": "node",
+    "outDir": "./",
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "strict": true,
+    "skipLibCheck": true
+  }
+}

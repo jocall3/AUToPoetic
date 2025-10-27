@@ -1,0 +1,71 @@
+{
+  "compileOnSave": false,
+  "compilerOptions": {
+    // Type Checking
+    "strict": true,
+    "noImplicitAny": true,
+    "strictNullChecks": true,
+    "strictFunctionTypes": true,
+    "strictBindCallApply": true,
+    "strictPropertyInitialization": true,
+    "noImplicitThis": true,
+    "alwaysStrict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    "allowUnreachableCode": false,
+    "allowUnusedLabels": false,
+    "exactOptionalPropertyTypes": true,
+    "noImplicitOverride": true,
+    "noImplicitReturns": true,
+
+    // Modules
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "baseUrl": ".",
+    "paths": {
+      "@core-ui/*": ["packages/core-ui/src/*"],
+      "@composite-ui/*": ["packages/composite-ui/src/*"],
+      "@themes/*": ["packages/themes/src/*"],
+      "@services/core/*": ["packages/services/core/src/*"],
+      "@services/business/*": ["packages/services/business/src/*"],
+      "@services/infrastructure/*": ["packages/services/infrastructure/src/*"],
+      "@mf/*": ["apps/micro-frontends/*"],
+      "@bff/*": ["apps/bff/src/*"],
+      "@backend/ai-gateway/*": ["services/ai-gateway/src/*"],
+      "@backend/github-proxy/*": ["services/github-proxy/src/*"],
+      "@backend/auth-gateway/*": ["services/auth-gateway/src/*"],
+      "@utils/*": ["packages/utils/src/*"]
+    },
+    "resolveJsonModule": true,
+
+    // Emit
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "removeComments": false,
+
+    // JavaScript Support
+    "allowJs": true,
+    "checkJs": true,
+
+    // Language and Environment
+    "target": "ES2022",
+    "lib": ["ESNext", "DOM", "DOM.Iterable"],
+    "jsx": "react-jsx",
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true,
+    "useDefineForClassFields": false,
+
+    // Interop Constraints
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "isolatedModules": true,
+
+    // Project Options
+    "composite": true,
+    "incremental": true,
+    "skipLibCheck": true
+  },
+  "exclude": ["node_modules", "tmp", "dist", "**/*.spec.ts", "**/*.test.ts"]
+}
