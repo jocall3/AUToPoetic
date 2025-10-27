@@ -1,7 +1,15 @@
-// Copyright James Burvel Oâ€™Callaghan III
-// President Citibank Demo Business Inc.
-
-
+/**
+ * @file This file is the central registry for all features available in the application.
+ * It defines the metadata, categories, tags, and other properties for each feature,
+ * providing a single source of truth that drives the UI, command palette, and AI orchestration.
+ *
+ * @security This file does not contain sensitive information. It defines application structure.
+ * @performance This file contains a large static data structure (RAW_FEATURES). It is critical that
+ * this data is constant and tree-shakable. The associated `FeatureManager` class provides
+ * memoized or efficient ways to query this data without performance penalties.
+ * @JSDoc-Date 2024-07-28
+ * @JSDoc-Version 1.0.0
+ */
 
 import React from 'react';
 import {
@@ -20,7 +28,7 @@ import {
     CheckBadgeIcon, CodeBracketSquareIcon, WifiIcon, BeakerIcon, LightBulbIcon, CircleStackIcon,
     CubeIcon, RocketLaunchIcon, GlobeAltIcon, PuzzlePieceIcon, UserGroupIcon, TrophyIcon,
     ArrowPathIcon, CurrencyDollarIcon, PresentationChartBarIcon, AcademicCapIcon,
-    ArrowDownTrayIcon, BugIcon, WindowIcon, MegaphoneIcon, RocketLaunchIcon
+    ArrowDownTrayIcon, WindowIcon, MegaphoneIcon
 } from './components/icons.tsx';
 
 export const CHROME_VIEW_IDS = ['features-list'] as const;
