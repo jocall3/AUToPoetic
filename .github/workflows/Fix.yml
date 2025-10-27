@@ -1,0 +1,64 @@
+name: Fix package.json
+
+on:
+  push:
+    branches:
+      - '**'
+
+jobs:
+  fix-dependencies:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v3
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install dependencies for script
+        run: npm install -g jq
+
+      - name: Clean package.json
+        run: |
+          echo "Scanning package.json for invalid entries..."
+
+          # Remove workspace:* versions and check registry
+          TMP_FILE="package.json.tmp"
+          jq 'del(.dependencies? | with_entries(select(.value|test("workspace:"))))
+              | del(.devDependencies? | with_entries(select(.value|test("workspace:"))))' package.json > $TMP_FILE
+          mv $TMP_FILE package.json
+
+          echo "Checking dependencies against npm registry..."
+
+          # Function to check if package exists
+          check_and_remove() {
+            SECTION=$1
+            if jq -e ".${SECTION}" package.json > /dev/null; then
+              for pkg in $(jq -r ".${SECTION} | keys[]" package.json); do
+                if ! npm view "$pkg" >/dev/null 2>&1; then
+                  echo "Removing non-existent package: $pkg from $SECTION"
+                  TMP_FILE="package.json.tmp"
+                  jq "del(.${SECTION}[\"$pkg\"])" package.json > $TMP_FILE
+                  mv $TMP_FILE package.json
+                fi
+              done
+            fi
+          }
+
+          check_and_remove dependencies
+          check_and_remove devDependencies
+
+      - name: Install cleaned dependencies and generate lockfile
+        run: npm install
+
+      - name: Commit and push changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add package.json package-lock.json
+          git commit -m "chore: clean invalid dependencies and regenerate lockfile" || echo "No changes to commit"
+          git push
