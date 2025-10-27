@@ -1,5 +1,11 @@
-// Copyright James Burvel O’Callaghan III
-// President Citibank Demo Business Inc.
+/**
+ * @file This module provides a comprehensive ErrorBoundary component for the application.
+ * It catches JavaScript errors anywhere in its child component tree, logs those errors,
+ * and displays a fallback UI with recovery options, including AI-powered debugging assistance.
+ *
+ * @module components/ErrorBoundary
+ * @see https://react.dev/reference/react/Component#catching-rendering-errors-with-an-error-boundary
+ */
 
 import React from 'react';
 import { logError } from '../services/telemetryService.ts';
@@ -7,10 +13,23 @@ import { debugErrorStream } from '../services/aiService.ts';
 import { SparklesIcon } from './icons.tsx';
 import { MarkdownRenderer, LoadingSpinner } from './shared/index.tsx';
 
+/**
+ * @interface Props
+ * @description The properties for the ErrorBoundary component.
+ * @property {React.ReactNode} children - The child components that this boundary will protect.
+ */
 interface Props {
   children: React.ReactNode;
 }
 
+/**
+ * @interface State
+ * @description The internal state of the ErrorBoundary component.
+ * @property {boolean} hasError - A flag that becomes true when an error is caught.
+ * @property {Error | null} error - The caught error object. Null if no error has occurred.
+ * @property {string} aiHelp - The AI-generated debugging assistance string, formatted as Markdown.
+ * @property {boolean} isAiLoading - A flag indicating if the AI assistant is currently processing a request.
+ */
 interface State {
   hasError: boolean;
   error: Error | null;
@@ -18,24 +37,93 @@ interface State {
   isAiLoading: boolean;
 }
 
+/**
+ * @class ErrorBoundary
+ * @description A React component that catches JavaScript errors in its child component tree,
+ * logs them, and displays a user-friendly fallback UI with recovery and debugging options.
+ *
+ * This component is crucial for application stability, preventing a UI crash in one part of the
+ * application from bringing down the entire user experience. It integrates with telemetry for
+ * error logging and an AI service for providing debugging suggestions directly to the user.
+ *
+ * @example
+ * ```tsx
+ * import { ErrorBoundary } from './components/ErrorBoundary';
+ * import { MyRiskyComponent } from './components/MyRiskyComponent';
+ *
+ * function App() {
+ *   return (
+ *     <ErrorBoundary>
+ *       <MyRiskyComponent />
+ *     </ErrorBoundary>
+ *   );
+ * }
+ * ```
+ */
 export class ErrorBoundary extends React.Component<Props, State> {
+  /**
+   * @constructor
+   * @param {Props} props - The component's properties.
+   */
   constructor(props: Props) {
     super(props);
     this.state = { hasError: false, error: null, aiHelp: '', isAiLoading: false };
   }
 
+  /**
+   * A lifecycle method that is invoked after an error has been thrown by a descendant component.
+   * It receives the error that was thrown and should return a value to update state.
+   *
+   * @param {Error} error - The error that was thrown.
+   * @returns {Partial<State>} An object representing the state update.
+   * @security This is a pure function and is the safe, recommended way to update state from an error
+   *           without causing side effects during the render phase.
+   */
   static getDerivedStateFromError(error: Error): Partial<State> {
     return { hasError: true, error };
   }
 
+  /**
+   * A lifecycle method that is invoked after an error has been thrown by a descendant component.
+   * It is used for side effects like logging the error to a telemetry service.
+   *
+   * @param {Error} error - The error that was thrown.
+   * @param {React.ErrorInfo} errorInfo - An object with a `componentStack` key containing information
+   *                                      about which component threw the error.
+   * @see services/telemetryService.ts
+   * @security The `error` and `errorInfo` objects may contain sensitive information from the application's
+   *           state or code. Ensure that the telemetry service sanitizes data appropriately before sending
+   *           it to external logging platforms.
+   */
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
     logError(error, { componentStack: errorInfo.componentStack });
   }
   
+  /**
+   * Handles the "Reload Application" action from the user.
+   * It forces a full page reload, which can resolve transient errors or issues related
+   * to stale client-side code after a new deployment.
+   * @performance A full page reload is a heavy operation that resets all application state
+   *              and requires all resources to be fetched and parsed again. It should be
+   *              used as a last-resort recovery mechanism.
+   */
   handleRevert = () => {
     window.location.reload();
   };
 
+  /**
+   * Initiates a request to the AI service to get debugging help for the caught error.
+   * It streams the AI's response and updates the state to display it in real-time.
+   *
+   * @returns {Promise<void>} A promise that resolves when the AI stream is complete.
+   * @see services/aiService.ts#debugErrorStream
+   * @security This function sends the error message and stack trace to an external AI service.
+   *           This could potentially expose sensitive information. The AI service endpoint and
+   *           data handling policies must be secure and compliant with privacy standards.
+   * @performance The perceived performance depends on the network latency and the processing time
+   *              of the AI service. The use of streaming provides a better user experience by
+   *              displaying results as they become available.
+   */
   handleAskAi = async () => {
     if (!this.state.error) return;
 
@@ -53,8 +141,14 @@ export class ErrorBoundary extends React.Component<Props, State> {
     } finally {
         this.setState({ isAiLoading: false });
     }
-};
+  };
 
+  /**
+   * Renders the component. If an error has been caught, it displays the fallback UI.
+   * Otherwise, it renders the child components as normal.
+   *
+   * @returns {React.ReactNode} The child components or the error fallback UI.
+   */
   render() {
     if (this.state.hasError) {
       return (
