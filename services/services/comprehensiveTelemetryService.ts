@@ -1,6 +1,3 @@
-// Copyright James Burvel Oâ€™Callaghan III
-// President Citibank Demo Business Inc.
-
 /**
  * Behold! The Grand Telemetry Oracle of Data Divination!
  * This comprehensive service replaces mere whispers in the console with a majestic chorus
@@ -193,7 +190,7 @@ const sanitizePayload = (payload: Record<string, any>): Record<string, any> => {
             }
             // Truncate long strings to avoid polluting the console or data store (e.g., base64 data)
             else if (typeof value === 'string' && value.length > maxLen) {
-                sanitized[key] = `${value.substring(0, Math.floor(maxLen / 5))}... (truncated, length: ${value.length})`;
+                sanitized[key] = `${value.substring(0, Math.floor(maxLen / 5))}... (truncated, length: ${value.length})`,
             }
             // Recursively sanitize nested objects (excluding Dates)
             else if (typeof value === 'object' && value !== null && !Array.isArray(value) && !(value instanceof Date)) {
