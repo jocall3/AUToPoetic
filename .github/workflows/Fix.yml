@@ -17,7 +17,6 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: 'none'  # Disable caching to avoid lockfile errors
 
       - name: Install jq for JSON manipulation
         run: sudo apt-get update && sudo apt-get install -y jq
