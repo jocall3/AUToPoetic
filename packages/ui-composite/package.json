@@ -1,0 +1,50 @@
+{
+  "name": "@jester/ui-composite",
+  "version": "1.0.0",
+  "description": "A library of composite, stateful UI patterns like the Windowing System and Dock Manager for the Jester UI Framework.",
+  "main": "dist/index.js",
+  "module": "dist/index.mjs",
+  "types": "dist/index.d.ts",
+  "license": "MIT",
+  "author": "Jester AI Implementation Team",
+  "keywords": [
+    "jester",
+    "ui",
+    "composite",
+    "react",
+    "components",
+    "windowing-system"
+  ],
+  "files": [
+    "dist"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsup src/index.ts --format cjs,esm --dts",
+    "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
+    "test": "vitest run",
+    "clean": "rm -rf dist .turbo"
+  },
+  "peerDependencies": {
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
+  },
+  "dependencies": {
+    "@jester/ui-core": "workspace:*",
+    "@jester/theme-engine": "workspace:*",
+    "clsx": "^2.1.1",
+    "framer-motion": "^11.2.12",
+    "react-rnd": "^10.4.11"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0",
+    "eslint-config-jester": "workspace:*",
+    "tsconfig": "workspace:*",
+    "tsup": "^8.1.0",
+    "typescript": "^5.5.2",
+    "vitest": "^1.6.0"
+  }
+}
