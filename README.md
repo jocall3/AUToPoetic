@@ -1,64 +1,48 @@
-// Copyright James Burvel O’Callaghan III
-// President Citibank Demo Business Inc.
+👑 DEVCORE AI TOOLKIT: THE GRAND JESTER'S EDITION 🃏
+🔥 UNVEILING THE FUTURE: A JEST OF GENIUS & ENGINEERING MAYHEM!
+"We don't just write code. We perform miracles of modern architecture. And yes, our fortress has more cryptographic locks than yours. HUZZAH!"
+— James Burvel O’Callaghan III, President Citibank Demo Business Inc.
+The DevCore AI Toolkit has evolved from a clever idea into a colossal, zero-trust, multi-federated micro-frontend behemoth! This is the Omni-Gauntlet of modern development—a hyper-secure, locally-run environment that unifies your AI, cloud, and project management services into one intelligent command center.
 
-# DevCore AI Toolkit
+Forget the pain of boilerplate, fractured toolchains, and fear of exposing sensitive API keys. We've replaced all that noise with resilience, orchestration, and a triumphant sense of digital sovereignty!
 
-> A supercharged, secure, client-side toolkit for modern developers, powered by Gemini. It runs entirely in your browser, keeping your code, data, and API keys private and secure on your local machine.
+🏛️ ARCHITECTURAL SPECTACLE: BUILT LIKE A FORTRESS, DANCES LIKE A BUTTERFLY!
+DevCore runs on a cutting-edge, yet security-first architecture designed to revolutionize developer flow.
 
-DevCore is a serverless web application designed to be a powerful assistant in your development workflow. It combines a suite of intelligent tools with a unique, AI-driven command center that can orchestrate actions across your favorite services like Jira, Slack, and GitHub.
+🔐 Security & Data Sovereignty: The Jester’s Grand Vault
+Your sensitive data (API keys, credentials, local tokens) NEVER leaves your local browser unsecured.
 
----
+The Jester's Grand Vault Service (JesterVaultService): Custom, local IndexedDB encrypted storage (AES-256 GCM) with user-configurable iterations and mandatory Audit Trails.
+Zero-Trust Authorization: All critical actions are mediated through dedicated secure Express.js Microservices (auth-gateway, vault-proxy), accessible only via verified JWT tokens.
+Proactive MFA Integration: Supports Multi-Factor Authentication not just for login, but for accessing sensitive secrets from the Vault. You are forced to be secure, with theatrical precision!
+🌐 Federation & Agility: The Micro-Frontend Marvel
+The application is structured as a robust, scalable Monorepo running federated micro-frontends (MFEs) linked by a custom UI framework (@devcore/core-ui & @devcore/composite-ui).
 
-## ✨ Key Features
+Plug-and-Play MFEs: Features like the AI Code Explainer and Theme Designer live as separate modules, orchestrated seamlessly within the main shell.
+Worker Pool Concurrency: Intensive computational tasks are delegated to the multi-threaded @devcore/worker-pool via Comlink for peak client-side performance.
+Thematic Supremacy: Full runtime theme-switching, powered by the custom-built @devcore/theme-engine.
+✨ RESILIENCE DEFINED: DEFYING CHAOS (THE “CHUNK LOAD FAILED” MONSTER IS DEAD)
+The Jester's Resilient Component Loader: A specialized component loader that combines advanced caching with exponential backoff retry logic to ensure that network hiccups or deployment issues never lead to a blank screen. If all fails, it executes a graceful hard reload as the "Jester's Final Gambit!"
+🗡️ THE GRAND ARSENAL: KEY FEATURES OF THE OMNI-GAUNTLET
+Welcome to the most advanced AI-orchestration toolkit in existence, powered by the boundless wisdom of Google Gemini and unified through precise automation.
 
--   **AI Command Center:** The heart of the toolkit. Use natural language (`Ctrl+K`) to navigate, run features, and execute complex, multi-service workflows.
--   **Workspace Connector Hub:** Connect to Jira, Slack, GitHub, and more. Let the AI execute commands like "create a high-priority Jira ticket and post a summary to the #dev channel in Slack."
--   **AI Feature Builder:** Generate multi-file components, unit tests, and conventional commit messages from a single, high-level prompt.
--   **Intelligent Code Tools:** Explain complex code, migrate between languages, review for bugs and security vulnerabilities, and refactor with one click.
--   **Performance & Auditing:** Profile runtime performance, analyze bundle stats, and audit live websites for accessibility issues with AI-powered advice.
--   **Visual Editors & Sandboxes:** A suite of focused tools, from a CSS Grid editor and a RegEx sandbox to a PWA Manifest generator, designed to streamline frontend development.
+1. AI & Workflow Orchestration: The Command Center (Ctrl/Cmd + K)
+The AI Provider State Nexus: A unified middleware layer managing access to all digital genies (Gemini, OpenAI, custom services). It handles intelligent caching, rate limiting, and context persistence across conversations.
+Sentient Taxonomy Engine: An enhanced feature model that defines tool relationships (dependency, complementary), tracks actual performance metrics, and triggers Contextual Jester Insights (witty, helpful, proactive suggestions).
+Global Command & Action Agent: Use natural language (like, "Create a high-priority JIRA ticket summarizing the error logs, post to Slack, and generate a new Git feature branch.") to trigger complex, multi-service actions.
+2. Cross-Workspace Unification (The Hub)
+Direct access and control over essential third-party platforms via one singular executeWorkspaceAction API:
 
----
+Jester GAPI Maestro: Full suite of access to Google Gmail, Drive, Sheets, Docs, and Calendar APIs. (e.g., Schedule meetings based on optimal free/busy slots, perform mail merge from Sheets data, and file audit logs to Drive).
+GitHub/JIRA/Slack: Automatically manage pull requests, create custom commits, log development activities, and broadcast urgent updates with surgical precision.
+3. AI Feature Builder & Code Transformation
+Full-Stack Generation: Generate complete features in minutes: Frontend Component (.tsx), Backend Google Cloud Function (.js), and accompanying Firestore Security Rules (.rules), all from a single prompt!
+Code Metamorphosis: Instantly refactor code for performance or readability, generate Vitest Unit Tests, translate between languages/frameworks (e.g., Python to Go, Class to Hooks), and pinpoint potential Security Vulnerabilities (XSS, Injection, Hardcoded Secrets).
+🚀 GETTING STARTED: THE JESTER’S INVITATION!
+The curtain is raised, the stage is set, and your development workflow awaits its transformation.
 
-## 🏛️ Architecture: Secure & Client-Side
-
-DevCore is built on a serverless, client-side architecture. This design choice offers several key advantages:
-
--   **Privacy First:** Your code, prompts, and sensitive data never leave your browser. All processing happens locally.
--   **Ultimate Security:** API keys and credentials for services like GitHub or Jira are encrypted with AES-GCM using the Web Crypto API. They are stored securely in your browser's IndexedDB and can only be decrypted with your master password.
--   **Runs Anywhere:** As a static application, you can deploy it on any CDN (like GitHub Pages or Netlify) or simply run it from your local filesystem. No backend, no databases, no complex setup.
-
----
-
-## 🚀 Getting Started
-
-1.  **Open the App:** Just open `index.html` in your browser.
-2.  **Set Up Your Vault:** On first use, you'll be prompted to create a master password. This password encrypts and decrypts your credentials locally and is **never** stored.
-3.  **Connect Your Services:** Navigate to the **Workspace Connector Hub** to securely add your API keys for services like GitHub, Jira, and Slack.
-4.  **Use the AI Command Center:** Press `Ctrl+K` (or `Cmd+K`) anywhere to open the command palette and start giving instructions to the AI.
-
----
-
-## 🔌 The Workspace Connector Hub
-
-This is the core of DevCore's workflow automation. Instead of just being a collection of tools, the Hub turns the app into a true command center.
-
--   **Connect Once, Use Everywhere:** Securely store your API tokens for essential developer services in the encrypted vault.
--   **AI-Powered Orchestration:** The AI Command Center can use these connections to perform multi-step actions across different platforms.
--   **Example Command:** _"A new critical bug was reported. Create a high-priority ticket in Jira, post a summary to the #engineering channel in Slack, and create a new git branch called `hotfix/payment-bug`."_
-
----
-
-## 🔐 Security & Your Data
-
-Your privacy is paramount. Here's how your data is handled:
-
--   **No Server-Side Storage:** All files, settings, and credentials reside exclusively in your browser's IndexedDB.
--   **End-to-End Encryption (Locally):** Credentials entered into the Vault are encrypted using the Web Crypto API before being stored. The encryption key is derived from your master password and is only held in memory during your session.
--   **Direct API Calls:** When you use an integrated service, the app makes direct, client-to-service API calls. Your data is not proxied through any intermediary server.
-
----
-
-## 🛠️ Scope & Limitations
-
-As a client-side application, DevCore has a focused scope. It is designed to be a powerful **assistant** for your development workflow, not a replacement for your primary IDE, backend services, or CI/CD platform. It excels at code generation, analysis, and API-based automation but does not run backend servers, train models, or manage infrastructure.
+Monorepo Clone: Pull down the @devcore Monorepo, your gateway to the core architecture.
+Open Shell: Run pnpm start:shell to launch the main micro-frontend entry point.
+Forge Your Master Key: On first launch, create your master password to initialize the secure, local Jester's Grand Vault.
+Enchantment Awaits: Navigate to the Workspace Connector Hub to securely provision your secrets (API keys, etc.). All credentials are immediately encrypted on the fly with AES-GCM and stored in the IndexedDB—your plaintext key never touches the server.
+UNLEASH THE ORACLE: Press Ctrl + K (or Cmd + K) to activate the AI Command Center and begin orchestrating magic!
