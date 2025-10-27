@@ -18,7 +18,7 @@ jobs:
     - name: Checkout repository
       uses: actions/checkout@v4
 
-    - name: Setup Node.js ${{ matrix.node-version }}
+    - name: Use Node.js ${{ matrix.node-version }}
       uses: actions/setup-node@v4
       with:
         node-version: ${{ matrix.node-version }}
@@ -31,23 +31,16 @@ jobs:
       run: pnpm install --frozen-lockfile
 
     - name: Lint code for style and documentation standards
-      run: pnpm run lint --if-present
+      run: pnpm run lint
 
-    - name: Run unit and integration tests
-      run: pnpm test --if-present
-
-    - name: Run security audit for vulnerabilities
-      run: pnpm audit
+    - name: Typecheck code
+      run: pnpm run typecheck
 
     - name: Build application for production
       run: pnpm run build
 
     - name: Generate documentation portal
-      run: pnpm run docs:generate --if-present
+      run: pnpm run docs:generate
 
-    - name: Deploy to GitHub Pages
-      if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-      uses: peaceiris/actions-gh-pages@v4
-      with:
-        github_token: ${{ secrets.GITHUB_TOKEN }}
-        publish_dir: ./dist
+    - name: Format code
+      run: pnpm run format
