@@ -2,9 +2,9 @@ name: Node.js CI/CD Pipeline
 
 on:
   push:
-    branches: [ "autocommit-all"]
+    branches: [ "autocommit-all", "main" ]
   pull_request:
-    branches: [ "autocommit-all"]
+    branches: [ "autocommit-all", "main" ]
 
 jobs:
   build-and-test:
@@ -23,10 +23,10 @@ jobs:
         with:
           node-version: ${{ matrix.node-version }}
           cache: 'pnpm'
+          cache-dependency-path: pnpm-lock.yaml
+          package-manager: pnpm
 
-      - name: Install pnpm
-        run: npm install -g pnpm
-
+      # pnpm is now available in PATH
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
