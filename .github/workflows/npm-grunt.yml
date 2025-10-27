@@ -2,9 +2,9 @@ name: Node.js CI/CD Pipeline
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ "autocommit-all" ]
   pull_request:
-    branches: [ "main" ]
+    branches: [ "autocommit-all" ]
 
 jobs:
   build-and-test:
