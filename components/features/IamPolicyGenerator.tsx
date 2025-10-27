@@ -1,73 +1,162 @@
-// Copyright James Burvel O’Callaghan III
-// President Citibank Demo Business Inc.
+/**
+ * @file Implements the IAM Policy Generator feature.
+ * @module components/features/IamPolicyGenerator
+ * @see @/services/WorkerPoolManager for the task offloading mechanism.
+ * @see @/ui/core for atomic UI components like Button.
+ * @see @/ui/composite for complex UI patterns like Page and Card.
+ */
 
 import React, { useState, useCallback } from 'react';
-import { generateIamPolicyStream } from '../../services/aiService.ts';
-import { ShieldCheckIcon } from '../icons.tsx';
-import { LoadingSpinner, MarkdownRenderer } from '../shared/index.tsx';
+import { Page, Card, Form, CodeBlock, Spinner, Alert, Grid } from '@/ui/composite';
+import { Button, SegmentedControl, TextArea } from '@/ui/core';
+import { ShieldCheckIcon } from '@/ui/icons';
+import { workerPoolManager } from '@/services/WorkerPoolManager';
+import { useNotification } from '@/contexts/NotificationContext';
 
+/**
+ * Represents the available cloud platforms for IAM policy generation.
+ * @typedef {'aws' | 'gcp'} CloudPlatform
+ */
+type CloudPlatform = 'aws' | 'gcp';
+
+/**
+ * The IamPolicyGenerator component allows users to generate cloud IAM policies
+ * from a natural language description.
+ *
+ * @description This component provides a user interface for describing desired permissions
+ * and selecting a cloud platform (AWS or GCP). It offloads the AI-powered policy
+ * generation task to a web worker via the `workerPoolManager` to keep the UI responsive.
+ * The generated policy is streamed back and displayed in a code block.
+ * @component
+ * @example
+ * return <IamPolicyGenerator />
+ */
 export const IamPolicyGenerator: React.FC = () => {
-    const [description, setDescription] = useState('A user role that can read from S3 buckets but not write or delete.');
-    const [platform, setPlatform] = useState<'aws' | 'gcp'>('aws');
-    const [policy, setPolicy] = useState('');
-    const [isLoading, setIsLoading] = useState(false);
-    const [error, setError] = useState('');
+    const [description, setDescription] = useState<string>('A user role that can read from S3 buckets but not write or delete.');
+    const [platform, setPlatform] = useState<CloudPlatform>('aws');
+    const [policy, setPolicy] = useState<string>('');
+    const [isLoading, setIsLoading] = useState<boolean>(false);
+    const [error, setError] = useState<string>('');
+    const { addNotification } = useNotification();
 
+    /**
+     * @function handleGenerate
+     * @description Enqueues a task with the WorkerPoolManager to generate an IAM policy.
+     * It handles the streaming response from the worker, updating the UI in real-time.
+     * @performance Offloads the AI call and stream processing to a web worker, preventing main thread blockage.
+     * @security The description is sent to the backend for processing by the AI model; no secrets are handled here.
+     * @returns {void}
+     */
     const handleGenerate = useCallback(async () => {
         if (!description.trim()) {
-            setError('Please provide a description.');
+            setError('Please provide a description of the desired permissions.');
             return;
         }
+
         setIsLoading(true);
         setError('');
         setPolicy('');
+
         try {
-            const stream = generateIamPolicyStream(description, platform);
-            let fullResponse = '';
-            for await (const chunk of stream) {
-                fullResponse += chunk;
-                setPolicy(fullResponse);
-            }
+            let accumulatedPolicy = '';
+            await workerPoolManager.enqueueTask({
+                task: 'generateIamPolicy',
+                payload: { description, platform },
+                onChunk: (chunk) => {
+                    if (typeof chunk === 'string') {
+                        accumulatedPolicy += chunk;
+                        setPolicy(accumulatedPolicy);
+                    }
+                },
+                onComplete: () => {
+                    setIsLoading(false);
+                    addNotification('IAM policy generated successfully.', 'success');
+                },
+                onError: (err) => {
+                    const errorMessage = err instanceof Error ? err.message : 'An unknown error occurred in the worker.';
+                    setError(errorMessage);
+                    setIsLoading(false);
+                    addNotification('Failed to generate IAM policy.', 'error');
+                }
+            });
         } catch (err) {
-            setError(err instanceof Error ? err.message : 'An unknown error occurred.');
-        } finally {
+            const errorMessage = err instanceof Error ? err.message : 'An unknown error occurred.';
+            setError(`Failed to enqueue task: ${errorMessage}`);
             setIsLoading(false);
+            addNotification('Failed to start policy generation task.', 'error');
         }
-    }, [description, platform]);
+    }, [description, platform, addNotification]);
+
+    const platformOptions = [
+        { label: 'AWS', value: 'aws' },
+        { label: 'GCP', value: 'gcp' },
+    ];
 
     return (
-        <div className="h-full flex flex-col p-4 sm:p-6 lg:p-8 text-text-primary">
-            <header className="mb-6">
-                <h1 className="text-3xl font-bold flex items-center">
-                    <ShieldCheckIcon />
-                    <span className="ml-3">IAM Policy Generator</span>
-                </h1>
-                <p className="text-text-secondary mt-1">Generate AWS or GCP IAM policies from a natural language description.</p>
-            </header>
-            <div className="flex-grow grid grid-cols-1 lg:grid-cols-2 gap-6 min-h-0">
-                <div className="flex flex-col gap-4">
-                     <div>
-                        <label htmlFor="platform" className="text-sm font-medium mb-2 block">Cloud Platform</label>
-                        <div className="flex gap-2 p-1 bg-surface rounded-lg border">
-                            <button onClick={() => setPlatform('aws')} className={`flex-1 py-2 rounded-md text-sm ${platform === 'aws' ? 'bg-primary text-text-on-primary' : ''}`}>AWS</button>
-                            <button onClick={() => setPlatform('gcp')} className={`flex-1 py-2 rounded-md text-sm ${platform === 'gcp' ? 'bg-primary text-text-on-primary' : ''}`}>GCP</button>
-                        </div>
-                    </div>
-                    <div className="flex flex-col flex-1 min-h-0">
-                        <label htmlFor="description" className="text-sm font-medium mb-2">Describe the desired permissions</label>
-                        <textarea id="description" value={description} onChange={e => setDescription(e.target.value)} className="flex-grow p-2 bg-surface border rounded text-sm"/>
-                    </div>
-                    <button onClick={handleGenerate} disabled={isLoading} className="btn-primary w-full py-3">{isLoading ? <LoadingSpinner/> : 'Generate Policy'}</button>
-                </div>
-                <div className="flex flex-col">
-                    <label className="text-sm font-medium mb-2">Generated Policy (JSON)</label>
-                    <div className="flex-grow p-1 bg-background border rounded overflow-auto">
-                        {isLoading && !policy && <div className="flex justify-center items-center h-full"><LoadingSpinner /></div>}
-                        {error && <p className="text-red-500 p-4">{error}</p>}
-                        {policy && <MarkdownRenderer content={policy} />}
-                    </div>
-                </div>
-            </div>
-        </div>
+        <Page.Root>
+            <Page.Header
+                icon={<ShieldCheckIcon />}
+                title="IAM Policy Generator"
+                description="Generate AWS or GCP IAM policies from a natural language description."
+            />
+            <Page.Content>
+                <Grid.Root columns={2} gap="6">
+                    <Grid.Item>
+                        <Card.Root className="flex flex-col h-full">
+                            <Card.Header>
+                                <Card.Title>Configuration</Card.Title>
+                            </Card.Header>
+                            <Card.Content className="flex-grow flex flex-col gap-4">
+                                <Form.Field>
+                                    <Form.Label>Cloud Platform</Form.Label>
+                                    <SegmentedControl
+                                        options={platformOptions}
+                                        value={platform}
+                                        onChange={(value) => setPlatform(value as CloudPlatform)}
+                                    />
+                                </Form.Field>
+                                <Form.Field className="flex-grow flex flex-col">
+                                    <Form.Label htmlFor="description">Describe the desired permissions</Form.Label>
+                                    <TextArea
+                                        id="description"
+                                        value={description}
+                                        onChange={(e) => setDescription(e.target.value)}
+                                        className="flex-grow"
+                                        placeholder="e.g., A role for a lambda function that can read from a DynamoDB table."
+                                    />
+                                </Form.Field>
+                            </Card.Content>
+                            <Card.Footer>
+                                <Button onClick={handleGenerate} disabled={isLoading} fullWidth>
+                                    {isLoading ? <Spinner text="Generating..." /> : 'Generate Policy'}
+                                </Button>
+                            </Card.Footer>
+                        </Card.Root>
+                    </Grid.Item>
+                    <Grid.Item>
+                        <Card.Root className="flex flex-col h-full">
+                             <Card.Header>
+                                <Card.Title>Generated Policy (JSON)</Card.Title>
+                            </Card.Header>
+                            <Card.Content className="flex-grow relative">
+                                {isLoading && !policy && (
+                                    <div className="absolute inset-0 flex items-center justify-center">
+                                        <Spinner text="AI is generating the policy..." />
+                                    </div>
+                                )}
+                                {error && <Alert variant="destructive" title="Error" description={error} />}
+                                {!isLoading && !error && (
+                                     <CodeBlock
+                                        language="json"
+                                        code={policy || '// Generated policy will appear here.'}
+                                        showCopyButton={!!policy}
+                                    />
+                                )}
+                            </Card.Content>
+                        </Card.Root>
+                    </Grid.Item>
+                </Grid.Root>
+            </Page.Content>
+        </Page.Root>
     );
 };
