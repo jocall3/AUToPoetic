@@ -16,7 +16,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 20  # no cache
 
       - name: Install jq for JSON manipulation
         run: sudo apt-get update && sudo apt-get install -y jq
