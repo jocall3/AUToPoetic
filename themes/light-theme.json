@@ -1,1 +1,23 @@
-{"mode":"light","palette":{"primary":{"value":"#0047AB","name":"Cobalt Blue"},"secondary":{"value":"#60A5FA","name":"Sky Blue"},"accent":{"value":"#F59E0B","name":"Amber Glow"},"neutral":{"value":"#CBD5E1","name":"Cool Gray"}},"theme":{"background":{"value":"#F5F7FA","name":"Light Silver-Blue"},"surface":{"value":"#FFFFFF","name":"Pure White"},"textPrimary":{"value":"#111827","name":"Charcoal Black"},"textSecondary":{"value":"#6B7280","name":"Subtle Gray"},"textOnPrimary":{"value":"#FFFFFF","name":"White Snow"},"border":{"value":"#E5E7EB","name":"Light Border Gray"}},"accessibility":{"primaryOnSurface":{"ratio":11.0,"score":"AAA"},"textPrimaryOnSurface":{"ratio":11.0,"score":"AAA"},"textSecondaryOnSurface":{"ratio":4.16,"score":"AA"},"textOnPrimaryOnPrimary":{"ratio":11.0,"score":"AAA"}}}1}}}
+{
+  "mode": "light",
+  "palette": {
+    "primary": { "value": "#0047AB", "name": "Cobalt Blue" },
+    "secondary": { "value": "#60A5FA", "name": "Sky Blue" },
+    "accent": { "value": "#F59E0B", "name": "Amber Glow" },
+    "neutral": { "value": "#CBD5E1", "name": "Cool Gray" }
+  },
+  "theme": {
+    "background": { "value": "#F5F7FA", "name": "Light Silver-Blue" },
+    "surface": { "value": "#FFFFFF", "name": "Pure White" },
+    "textPrimary": { "value": "#111827", "name": "Charcoal Black" },
+    "textSecondary": { "value": "#6B7280", "name": "Subtle Gray" },
+    "textOnPrimary": { "value": "#FFFFFF", "name": "White Snow" },
+    "border": { "value": "#E5E7EB", "name": "Light Border Gray" }
+  },
+  "accessibility": {
+    "primaryOnSurface": { "ratio": 11.0, "score": "AAA" },
+    "textPrimaryOnSurface": { "ratio": 11.0, "score": "AAA" },
+    "textSecondaryOnSurface": { "ratio": 4.16, "score": "AA" },
+    "textOnPrimaryOnPrimary": { "ratio": 11.0, "score": "AAA" }
+  }
+}
