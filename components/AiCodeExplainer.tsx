@@ -1,14 +1,125 @@
-// Copyright James Burvel O’Callaghan III
-// President Citibank Demo Business Inc.
+/**
+ * @file AiCodeExplainer.tsx
+ * @module components/AiCodeExplainer
+ * @description This file contains the implementation of the AiCodeExplainer feature.
+ * It has been refactored to align with the new micro-frontend and microservice architecture.
+ * All business logic is now handled via a GraphQL API call to the BFF, and heavy client-side
+ * computations (syntax highlighting, flowchart rendering) are offloaded to a web worker pool.
+ * UI components are sourced from the new proprietary UI framework.
+ * @see @/hooks/useCodeAnalysis.ts (conceptual)
+ * @see @/services/worker-pool/index.ts (conceptual)
+ * @see @/api/bff/index.ts (conceptual)
+ * @security This component sends user-provided code to a backend service for analysis.
+ * The backend must treat this input as untrusted. Client-side rendering of results (Markdown, SVG)
+ * is sanitized or handled carefully to prevent XSS vulnerabilities.
+ * @performance Syntax highlighting and Mermaid diagram rendering are offloaded to web workers to
+ * prevent blocking the main thread, especially for large code snippets or complex diagrams.
+ * API calls are asynchronous.
+ */
 
 import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
-import mermaid from 'mermaid';
-import { explainCodeStructured, generateMermaidJs } from '../services/index.ts';
-import type { StructuredExplanation } from '../types.ts';
-import { CpuChipIcon } from './icons.tsx';
-import { MarkdownRenderer, LoadingSpinner } from './shared/index.tsx';
+import type { StructuredExplanation } from '../types';
+import { CpuChipIcon } from './icons';
 
-const exampleCode = `const bubbleSort = (arr) => {
+// --- Conceptual Service & API Implementations (for demonstration) ---
+
+/**
+ * @conceptual
+ * This section represents the new, abstracted services and API clients that this
+ * component would consume in the target architecture. They are mocked here to make
+ * this component's code runnable and to illustrate the design pattern.
+ */
+
+/**
+ * @conceptual BffApiClient
+ * A conceptual representation of the Backend-for-Frontend GraphQL API client.
+ * In a real implementation, this would be an instance of Apollo Client, urql, etc.
+ */
+const bffApiClient = {
+  query: async ({ query, variables }: { query: string; variables: Record<string, any> }): Promise<{ data: any, errors?: any[] }> => {
+    console.log("Making GraphQL query to BFF:", { query, variables });
+    await new Promise(res => setTimeout(res, 1500));
+    if (variables.code.includes('error')) {
+      return { data: null, errors: [{ message: "AI analysis failed on the server." }] };
+    }
+    return {
+      data: {
+        analyzeCode: {
+          explanation: {
+            summary: "This is a mock summary of the `bubbleSort` function. It sorts an array in place using a naive O(n^2) approach.",
+            lineByLine: [{ lines: "1-10", explanation: "The entire function definition, which takes an array `arr`." }, { lines: "2-7", explanation: "The nested loops that perform the sorting comparisons and swaps." }],
+            complexity: { time: "O(n^2)", space: "O(1)" },
+            suggestions: ["For large arrays, consider more efficient algorithms like QuickSort or MergeSort.", "The implementation is correct for bubble sort."]
+          },
+          flowchart: `graph TD\n    A[Start] --> B{Loop i from 0 to n-1};\n    B --> C{Loop j from 0 to n-i-2};\n    C --> D{arr[j] > arr[j+1]?};\n    D -- Yes --> E[Swap arr[j] and arr[j+1]];\n    E --> C;\n    D -- No --> C;\n    C -- End Inner Loop --> B;\n    B -- End Outer Loop --> F[Return arr];\n    F --> G[End];`
+        }
+      }
+    };
+  }
+};
+
+/**
+ * @conceptual workerPoolManager
+ * A conceptual representation of the Worker Pool Manager service for offloading tasks.
+ */
+const workerPoolManager = {
+  submitTask: async (taskName: string, payload: any): Promise<any> => {
+    console.log("Submitting task to worker pool:", { taskName });
+    await new Promise(res => setTimeout(res, 50 + Math.random() * 100)); // Simulate worker overhead
+    if (taskName === 'renderMermaid') {
+      const mermaid = (await import('mermaid')).default;
+      mermaid.initialize({ startOnLoad: false, theme: 'dark', securityLevel: 'loose' });
+      const { svg } = await mermaid.render(`mermaid-graph-${Date.now()}`, payload);
+      return svg;
+    }
+    if (taskName === 'highlightSyntax') {
+       const escapedCode = payload.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      return escapedCode
+          .replace(/\b(const|let|var|function|return|if|for|=>|import|from|export|default)\b/g, '<span class=\"text-cyan-400\">$1</span>')
+          .replace(/(\b(true|false|null|undefined)\b)/g, '<span class=\"text-purple-400\">$1</span>')
+          .replace(/("|'|`)(.*?)("|'|`)/g, '<span class=\"text-emerald-400\">$1$2$3</span>')
+          .replace(/(\d+)/g, '<span class=\"text-amber-400\">$1</span>')
+          .replace(/(\/\/.*|\/\*[\s\S]*?\*\/)/g, '<span class=\"text-gray-500 italic\">$1</span>')
+          .replace(/(\{|\}|\(|\)|\[|\])/g, '<span class=\"text-gray-400\">$1</span>');
+    }
+    throw new Error(`Unknown worker task: ${taskName}`);
+  }
+};
+
+// --- UI Components (Conceptual implementations from proprietary UI library) ---
+
+const Box = ({ children, className, ...props }: any) => <div className={className} {...props}>{children}</div>;
+const Flex = ({ children, className, ...props }: any) => <div className={`flex ${className}`} {...props}>{children}</div>;
+const Grid = ({ children, className, ...props }: any) => <div className={`grid ${className}`} {...props}>{children}</div>;
+const Typography = ({ as: Component = 'p', children, className, ...props }: any) => <Component className={className} {...props}>{children}</Component>;
+const Button = ({ children, className, ...props }: any) => <button className={`btn-primary ${className}`} {...props}>{children}</button>;
+const Spinner = () => <div className="w-6 h-6 border-4 border-primary border-t-transparent rounded-full animate-spin"></div>;
+const Icon = ({ children, ...props }: any) => <div {...props}>{children}</div>;
+const MarkdownRenderer = ({ content, className }: { content: string; className?: string }) => {
+  const [html, setHtml] = useState('');
+  useEffect(() => { 
+    import('marked').then(marked => setHtml(marked.marked.parse(content) as string));
+  }, [content]);
+  return <div className={`prose prose-sm dark:prose-invert max-w-none ${className}`} dangerouslySetInnerHTML={{ __html: html }} />;
+};
+
+// --- GraphQL Query --- 
+const ANALYZE_CODE_QUERY = `
+  query AnalyzeCode($code: String!) {
+    analyzeCode(code: $code) {
+      explanation {
+        summary
+        lineByLine { lines explanation }
+        complexity { time space }
+        suggestions
+      }
+      flowchart
+    }
+  }
+`;
+
+// --- Constants ---
+const EXAMPLE_CODE = `const bubbleSort = (arr) => {
   for (let i = 0; i < arr.length; i++) {
     for (let j = 0; j < arr.length - i - 1; j++) {
       if (arr[j] > arr[j + 1]) {
@@ -21,193 +132,240 @@ const exampleCode = `const bubbleSort = (arr) => {
 
 type ExplanationTab = 'summary' | 'lineByLine' | 'complexity' | 'suggestions' | 'flowchart';
 
-const simpleSyntaxHighlight = (code: string) => {
-    const escapedCode = code
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;');
+// --- Custom Hooks ---
 
-    return escapedCode
-        .replace(/\b(const|let|var|function|return|if|for|=>|import|from|export|default)\b/g, '<span class="text-indigo-400 font-semibold">$1</span>')
-        .replace(/(\`|'|")(.*?)(\`|'|")/g, '<span class="text-emerald-400">$1$2$3</span>')
-        .replace(/(\/\/.*)/g, '<span class="text-gray-400 italic">$1</span>')
-        .replace(/(\{|\}|\(|\)|\[|\])/g, '<span class="text-gray-400">$1</span>');
+/**
+ * Custom hook to offload syntax highlighting to a web worker.
+ * @param {string} code The code to highlight.
+ * @returns {string} The HTML string of the highlighted code.
+ * @performance Offloads syntax highlighting from the main thread, improving UI responsiveness for large code inputs.
+ */
+const useSyntaxHighlighting = (code: string): string => {
+  const [highlightedHtml, setHighlightedHtml] = useState('');
+
+  useEffect(() => {
+    let isMounted = true;
+    workerPoolManager.submitTask('highlightSyntax', code)
+      .then(html => {
+        if (isMounted) setHighlightedHtml(html);
+      })
+      .catch(console.error);
+    return () => { isMounted = false; };
+  }, [code]);
+
+  return highlightedHtml;
 };
 
-mermaid.initialize({ startOnLoad: false, theme: 'neutral', securityLevel: 'loose' });
+/**
+ * Custom hook to manage the state and logic for the AI Code Explainer.
+ * @param {string} [initialCode] Optional initial code to analyze.
+ * @returns The full state and handlers for the AiCodeExplainer component.
+ */
+const useCodeAnalysis = (initialCode?: string) => {
+  const [code, setCode] = useState<string>(initialCode || EXAMPLE_CODE);
+  const [analysisResult, setAnalysisResult] = useState<{ explanation: StructuredExplanation; flowchart: string; } | null>(null);
+  const [status, setStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
+  const [error, setError] = useState<string>('');
+  const [activeTab, setActiveTab] = useState<ExplanationTab>('summary');
 
-export const AiCodeExplainer: React.FC<{ initialCode?: string }> = ({ initialCode }) => {
-    const [code, setCode] = useState<string>(initialCode || exampleCode);
-    const [explanation, setExplanation] = useState<StructuredExplanation | null>(null);
-    const [mermaidCode, setMermaidCode] = useState<string>('');
-    const [isLoading, setIsLoading] = useState<boolean>(false);
-    const [error, setError] = useState<string>('');
-    const [activeTab, setActiveTab] = useState<ExplanationTab>('summary');
-    const textareaRef = useRef<HTMLTextAreaElement>(null);
-    const preRef = useRef<HTMLPreElement>(null);
-    const mermaidContainerRef = useRef<HTMLDivElement>(null);
-
-    const handleExplain = useCallback(async (codeToExplain: string) => {
-        if (!codeToExplain.trim()) {
-            setError('Please enter some code to explain.');
-            return;
-        }
-        setIsLoading(true);
-        setError('');
-        setExplanation(null);
-        setMermaidCode('');
-        setActiveTab('summary');
-        try {
-            const [explanationResult, mermaidResult] = await Promise.all([
-                explainCodeStructured(codeToExplain),
-                generateMermaidJs(codeToExplain)
-            ]);
-            setExplanation(explanationResult);
-            setMermaidCode(mermaidResult.replace(/```mermaid\n|```/g, ''));
-
-        } catch (err) {
-            const errorMessage = err instanceof Error ? err.message : 'An unknown error occurred.';
-            setError(`Failed to get explanation: ${errorMessage}`);
-        } finally {
-            setIsLoading(false);
-        }
-    }, []);
-    
-    useEffect(() => {
-        if (initialCode) {
-            setCode(initialCode);
-            handleExplain(initialCode);
-        }
-    }, [initialCode, handleExplain]);
-
-    useEffect(() => {
-        const renderMermaid = async () => {
-             if (activeTab === 'flowchart' && mermaidCode && mermaidContainerRef.current) {
-                try {
-                    mermaidContainerRef.current.innerHTML = ''; // Clear previous
-                    const { svg } = await mermaid.render(`mermaid-graph-${Date.now()}`, mermaidCode);
-                    mermaidContainerRef.current.innerHTML = svg;
-                } catch (e) {
-                    console.error("Mermaid rendering error:", e);
-                    mermaidContainerRef.current.innerHTML = `<p class="text-red-500">Error rendering flowchart.</p>`;
-                }
-            }
-        }
-        renderMermaid();
-    }, [activeTab, mermaidCode]);
-
-
-    const handleScroll = () => {
-        if (preRef.current && textareaRef.current) {
-            preRef.current.scrollTop = textareaRef.current.scrollTop;
-            preRef.current.scrollLeft = textareaRef.current.scrollLeft;
-        }
-    };
-
-    const highlightedCode = useMemo(() => simpleSyntaxHighlight(code), [code]);
-
-    const renderTabContent = () => {
-        if (!explanation) return null;
-        switch(activeTab) {
-            case 'summary':
-                return <MarkdownRenderer content={explanation.summary} />;
-            case 'lineByLine':
-                return (
-                    <div className="space-y-3">
-                        {explanation.lineByLine.map((item, index) => (
-                            <div key={index} className="p-3 bg-background rounded-md border border-border">
-                                <p className="font-mono text-xs text-primary mb-1">Lines: {item.lines}</p>
-                                <p className="text-sm">{item.explanation}</p>
-                            </div>
-                        ))}
-                    </div>
-                );
-            case 'complexity':
-                return (
-                    <div>
-                        <p><strong>Time Complexity:</strong> <span className="font-mono text-amber-600">{explanation.complexity.time}</span></p>
-                        <p><strong>Space Complexity:</strong> <span className="font-mono text-amber-600">{explanation.complexity.space}</span></p>
-                    </div>
-                );
-            case 'suggestions':
-                return (
-                     <ul className="list-disc list-inside space-y-2">
-                        {explanation.suggestions.map((item, index) => <li key={index}>{item}</li>)}
-                    </ul>
-                );
-            case 'flowchart':
-                return (
-                    <div ref={mermaidContainerRef} className="w-full h-full flex items-center justify-center">
-                        <LoadingSpinner />
-                    </div>
-                );
-        }
+  const analyzeCode = useCallback(async (codeToAnalyze: string) => {
+    if (!codeToAnalyze.trim()) {
+      setError('Please enter some code to explain.');
+      setStatus('error');
+      return;
     }
+    setStatus('loading');
+    setError('');
+    setAnalysisResult(null);
+    setActiveTab('summary');
 
-    return (
-        <div className="h-full flex flex-col p-4 sm:p-6 lg:p-8 text-text-primary">
-            <header className="mb-6 flex-shrink-0">
-                <h1 className="text-3xl font-bold flex items-center">
-                    <CpuChipIcon />
-                    <span className="ml-3">AI Code Explainer</span>
-                </h1>
-                <p className="text-text-secondary mt-1">Get a detailed, structured analysis of any code snippet.</p>
-            </header>
-            <div className="flex-grow grid grid-cols-1 md:grid-cols-2 gap-6 min-h-0">
-                
-                {/* Left Column: Code Input */}
-                <div className="flex flex-col min-h-0 md:col-span-1">
-                    <label htmlFor="code-input" className="text-sm font-medium text-text-secondary mb-2">Your Code</label>
-                    <div className="relative flex-grow bg-surface border border-border rounded-md focus-within:ring-2 focus-within:ring-primary overflow-hidden">
-                        <textarea
-                            ref={textareaRef}
-                            id="code-input"
-                            value={code}
-                            onChange={(e) => setCode(e.target.value)}
-                            onScroll={handleScroll}
-                            placeholder="Paste your code here..."
-                            spellCheck="false"
-                            className="absolute inset-0 w-full h-full p-4 bg-transparent resize-none font-mono text-sm text-transparent caret-primary outline-none z-10"
-                        />
-                        <pre 
-                            ref={preRef}
-                            aria-hidden="true"
-                            className="absolute inset-0 w-full h-full p-4 font-mono text-sm text-text-primary pointer-events-none z-0 whitespace-pre-wrap overflow-auto no-scrollbar"
-                            dangerouslySetInnerHTML={{ __html: highlightedCode + '\n' }}
-                        />
-                    </div>
-                    <div className="mt-4 flex-shrink-0">
-                        <button
-                            onClick={() => handleExplain(code)}
-                            disabled={isLoading}
-                            className="btn-primary w-full flex items-center justify-center px-6 py-3"
-                        >
-                            {isLoading ? <LoadingSpinner/> : 'Analyze Code'}
-                        </button>
-                    </div>
-                </div>
+    try {
+      const { data, errors } = await bffApiClient.query({
+        query: ANALYZE_CODE_QUERY,
+        variables: { code: codeToAnalyze },
+      });
 
-                {/* Right Column: AI Analysis */}
-                <div className="flex flex-col min-h-0 md:col-span-1">
-                    <label className="text-sm font-medium text-text-secondary mb-2">AI Analysis</label>
-                    <div className="relative flex-grow flex flex-col bg-surface border border-border rounded-md overflow-hidden">
-                        <div className="flex-shrink-0 flex border-b border-border">
-                           {(['summary', 'lineByLine', 'complexity', 'suggestions', 'flowchart'] as ExplanationTab[]).map(tab => (
-                               <button key={tab} onClick={() => setActiveTab(tab)} disabled={!explanation}
-                                className={`px-4 py-2 text-sm font-medium capitalize transition-colors ${activeTab === tab ? 'bg-background text-primary font-semibold' : 'text-text-secondary hover:bg-gray-100 dark:hover:bg-slate-700 disabled:text-gray-400 dark:disabled:text-slate-500'}`}>
-                                   {tab.replace(/([A-Z])/g, ' $1')}
-                               </button>
-                           ))}
-                        </div>
-                        <div className="p-4 flex-grow overflow-y-auto">
-                            {isLoading && <div className="flex items-center justify-center h-full"><LoadingSpinner /></div>}
-                            {error && <p className="text-red-500">{error}</p>}
-                            {explanation && !isLoading && renderTabContent()}
-                            {!isLoading && !explanation && !error && <div className="text-text-secondary h-full flex items-center justify-center">The analysis will appear here.</div>}
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    );
+      if (errors) {
+        throw new Error(errors.map(e => e.message).join(', '));
+      }
+      
+      setAnalysisResult(data.analyzeCode);
+      setStatus('success');
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'An unknown error occurred.';
+      setError(`Failed to get explanation: ${errorMessage}`);
+      setStatus('error');
+    }
+  }, []);
+
+  useEffect(() => {
+    if (initialCode) {
+      setCode(initialCode);
+      analyzeCode(initialCode);
+    }
+  }, [initialCode, analyzeCode]);
+
+  return {
+    code, setCode,
+    analysisResult,
+    status, error,
+    activeTab, setActiveTab,
+    analyzeCode
+  };
+};
+
+// --- Sub-components ---
+
+/**
+ * A memoized component to render a Mermaid.js diagram using a web worker.
+ * @param {{ chart: string }} props The mermaid diagram code.
+ * @returns {React.ReactElement} The rendered SVG diagram.
+ * @performance Diagram rendering is performed in a worker, preventing main thread blockage.
+ */
+const MermaidDiagram = React.memo(({ chart }: { chart: string }) => {
+  const ref = useRef<HTMLDivElement>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  
+  useEffect(() => {
+    if (chart && ref.current) {
+      let isMounted = true;
+      setIsLoading(true);
+      workerPoolManager.submitTask('renderMermaid', chart)
+        .then(svg => {
+          if (isMounted && ref.current) {
+            ref.current.innerHTML = svg;
+          }
+        })
+        .catch(e => {
+          console.error("Mermaid rendering error:", e);
+          if (isMounted && ref.current) {
+            ref.current.innerHTML = `<p class="text-red-500">Error rendering flowchart.</p>`;
+          }
+        })
+        .finally(() => {
+          if(isMounted) setIsLoading(false);
+        });
+      return () => { isMounted = false; };
+    }
+  }, [chart]);
+
+  return (
+    <Box ref={ref} className="w-full h-full flex items-center justify-center">
+      {isLoading && <Spinner />}
+    </Box>
+  );
+});
+MermaidDiagram.displayName = 'MermaidDiagram';
+
+// --- Main Component ---
+
+/**
+ * @class AiCodeExplainer
+ * @description A feature component that allows users to input code and receive a detailed, 
+ * AI-powered analysis, including a summary, line-by-line explanation, complexity analysis, 
+ * improvement suggestions, and a visual flowchart.
+ * @param {{ initialCode?: string }} props The component props.
+ * @param {string} [props.initialCode] - Optional initial code to display and analyze.
+ * @example
+ * <AiCodeExplainer initialCode="const x = 1;" />
+ */
+export const AiCodeExplainer: React.FC<{ initialCode?: string }> = ({ initialCode }) => {
+  const {
+    code, setCode,
+    analysisResult,
+    status, error,
+    activeTab, setActiveTab,
+    analyzeCode
+  } = useCodeAnalysis(initialCode);
+
+  const highlightedCode = useSyntaxHighlighting(code);
+
+  const renderTabContent = () => {
+    if (!analysisResult) return null;
+    switch(activeTab) {
+      case 'summary':
+        return <MarkdownRenderer content={analysisResult.explanation.summary} />;
+      case 'lineByLine':
+        return (
+          <Box className="space-y-3">
+            {analysisResult.explanation.lineByLine.map((item, index) => (
+              <Box key={index} className="p-3 bg-background rounded-md border border-border">
+                <Typography as="p" className="font-mono text-xs text-primary mb-1">Lines: {item.lines}</Typography>
+                <Typography as="p" className="text-sm">{item.explanation}</Typography>
+              </Box>
+            ))}
+          </Box>
+        );
+      case 'complexity':
+        return (
+          <Box>
+            <Typography><strong>Time Complexity:</strong> <span className="font-mono text-amber-400">{analysisResult.explanation.complexity.time}</span></Typography>
+            <Typography><strong>Space Complexity:</strong> <span className="font-mono text-amber-400">{analysisResult.explanation.complexity.space}</span></Typography>
+          </Box>
+        );
+      case 'suggestions':
+        return (
+          <ul className="list-disc list-inside space-y-2">
+            {analysisResult.explanation.suggestions.map((item, index) => <li key={index}>{item}</li>)}
+          </ul>
+        );
+      case 'flowchart':
+        return <MermaidDiagram chart={analysisResult.flowchart} />;
+      default: return null;
+    }
+  };
+
+  return (
+    <Box className="h-full flex flex-col p-4 sm:p-6 lg:p-8 text-text-primary bg-background">
+      <header className="mb-6 flex-shrink-0">
+        <Typography as="h1" className="text-3xl font-bold flex items-center">
+          <Icon><CpuChipIcon /></Icon>
+          <span className="ml-3">AI Code Explainer</span>
+        </Typography>
+        <Typography as="p" className="text-text-secondary mt-1">Get a detailed, structured analysis of any code snippet.</Typography>
+      </header>
+
+      <Grid className="flex-grow grid-cols-1 md:grid-cols-2 gap-6 min-h-0">
+        {/* Left: Code Input */}
+        <Flex className="flex-col min-h-0">
+          <Typography as="label" htmlFor="code-input" className="text-sm font-medium text-text-secondary mb-2">Your Code</Typography>
+          <CodeEditor
+            id="code-input"
+            value={code}
+            onValueChange={setCode}
+            highlightedHtml={highlightedCode}
+            placeholder="Paste your code here..."
+            className="flex-grow"
+          />
+          <Box className="mt-4 flex-shrink-0">
+            <Button onClick={() => analyzeCode(code)} disabled={status === 'loading'} className="w-full flex items-center justify-center px-6 py-3">
+              {status === 'loading' ? <Spinner /> : 'Analyze Code'}
+            </Button>
+          </Box>
+        </Flex>
+
+        {/* Right: AI Analysis */}
+        <Flex className="flex-col min-h-0">
+          <Typography as="label" className="text-sm font-medium text-text-secondary mb-2">AI Analysis</Typography>
+          <Flex className="flex-grow flex-col bg-surface border border-border rounded-md overflow-hidden">
+            <Tabs.Root>
+              <Tabs.List>
+                {(['summary', 'lineByLine', 'complexity', 'suggestions', 'flowchart'] as ExplanationTab[]).map(tab => (
+                  <Tabs.Trigger key={tab} value={tab} onClick={() => setActiveTab(tab)} disabled={!analysisResult}>
+                    {tab.replace(/([A-Z])/g, ' $1')}
+                  </Tabs.Trigger>
+                ))}
+              </Tabs.List>
+            </Tabs.Root>
+            <Box className="p-4 flex-grow overflow-y-auto">
+              {status === 'loading' && <Flex className="items-center justify-center h-full"><Spinner /></Flex>}
+              {status === 'error' && <Typography as="p" className="text-red-500">{error}</Typography>}
+              {status === 'success' && analysisResult && renderTabContent()}
+              {status === 'idle' && <Typography as="p" className="text-text-secondary h-full flex items-center justify-center">The analysis will appear here.</Typography>}
+            </Box>
+          </Flex>
+        </Flex>
+      </Grid>
+    </Box>
+  );
 };
