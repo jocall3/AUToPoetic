@@ -2,18 +2,19 @@
  * @file components/SettingsView.tsx
  * @module components/SettingsView
  * @description This module exports the main component for the application's settings view.
- * It allows users to manage themes, feature visibility, and clear locally stored data. It is built
- * with a component-based approach for maintainability.
+ * It allows users to manage themes, API keys, feature visibility, and clear locally stored data.
+ * It is built with a component-based approach for maintainability.
  * @see SettingsView
  */
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { useGlobalState } from '../contexts/GlobalStateContext.tsx';
 import { clearAllFiles } from '../services/dbService.ts';
 import { useLocalStorage } from '../hooks/useLocalStorage.ts';
 import { useTheme } from '../hooks/useTheme.ts';
 import { ALL_FEATURES } from './features/index.ts';
-import { TrashIcon, SunIcon, MoonIcon } from './icons.tsx';
+import { TrashIcon, SunIcon, MoonIcon, SparklesIcon } from './icons.tsx';
+import { useNotification } from '../contexts/NotificationContext.tsx';
 
 /**
  * @interface ToggleSwitchProps
@@ -128,7 +129,7 @@ const SettingsItem: React.FC<SettingsItemProps> = ({ title, description, control
 /**
  * @component SettingsView
  * @description Provides the main view for application settings. It allows users to configure application
- * appearance (theme), manage which features are visible in the sidebar, and clear various types of
+ * appearance (theme), manage API keys, manage which features are visible in the sidebar, and clear various types of
  * locally stored data. This component acts as a central hub for user-level customization.
  * @security This component handles data deletion from the user's local browser storage (IndexedDB and LocalStorage).
  * It does not handle any server-side data or secrets. Deletion actions are protected by browser confirmation dialogs.
@@ -147,6 +148,19 @@ export const SettingsView: React.FC = () => {
     const [, setNotes] = useLocalStorage('devcore_moodboard', []);
     const [, setDevNotes] = useLocalStorage('devcore_notes', []);
     const [, setPersonalities] = useLocalStorage('devcore_ai_personalities', []);
+    const { addNotification } = useNotification();
+
+    const [geminiApiKey, setGeminiApiKey] = useLocalStorage<string>('gemini_api_key', '');
+    const [tempApiKey, setTempApiKey] = useState('');
+
+    useEffect(() => {
+        setTempApiKey(geminiApiKey);
+    }, [geminiApiKey]);
+
+    const handleSaveApiKey = () => {
+        setGeminiApiKey(tempApiKey);
+        addNotification('Gemini API Key saved!', 'success');
+    };
 
     /**
      * Handles the clearing of all AI-generated files from IndexedDB.
@@ -158,7 +172,7 @@ export const SettingsView: React.FC = () => {
     const handleClearGeneratedFiles = async (): Promise<void> => {
         if (window.confirm("Are you sure you want to delete all AI-generated files? This cannot be undone.")) {
             await clearAllFiles();
-            alert("Generated files cleared.");
+            addNotification("Generated files cleared.", 'info');
         }
     };
     
@@ -170,7 +184,7 @@ export const SettingsView: React.FC = () => {
     const handleClearSnippets = (): void => {
         if (window.confirm("Are you sure you want to delete all saved snippets? This cannot be undone.")) {
             setSnippets([]);
-            alert("Snippets cleared.");
+            addNotification("Snippets cleared.", 'info');
         }
     };
 
@@ -183,7 +197,7 @@ export const SettingsView: React.FC = () => {
         if (window.confirm("Are you sure you want to delete all notes and moodboard items? This cannot be undone.")) {
             setNotes([]);
             setDevNotes([]);
-            alert("Notes & Whiteboard items cleared.");
+            addNotification("Notes & Whiteboard items cleared.", 'info');
         }
     };
     
@@ -195,7 +209,7 @@ export const SettingsView: React.FC = () => {
     const handleClearPersonalities = (): void => {
         if (window.confirm("Are you sure you want to delete all AI Personalities? This cannot be undone.")) {
             setPersonalities([]);
-            alert("AI Personalities cleared.");
+            addNotification("AI Personalities cleared.", 'info');
         }
     }
     
@@ -234,6 +248,25 @@ export const SettingsView: React.FC = () => {
                              <button onClick={clearCustomTheme} disabled={!themeState.customColors} className="px-4 py-2 text-sm rounded-md bg-gray-100 dark:bg-slate-700 hover:bg-gray-200 dark:hover:bg-slate-600 disabled:opacity-50 disabled:cursor-not-allowed">
                                 Revert to Default
                             </button>
+                        }
+                    />
+                </SettingsSection>
+
+                <SettingsSection title="API Keys">
+                    <SettingsItem
+                        title="Google Gemini API Key"
+                        description="Your personal API key for using AI features in the app."
+                        control={
+                            <div className="flex items-center gap-2">
+                                <input 
+                                    type="password" 
+                                    value={tempApiKey}
+                                    onChange={e => setTempApiKey(e.target.value)}
+                                    placeholder="Enter your API key"
+                                    className="w-64 p-2 bg-background border border-border rounded-md text-sm"
+                                />
+                                <button onClick={handleSaveApiKey} className="btn-primary px-4 py-2 text-sm">Save</button>
+                            </div>
                         }
                     />
                 </SettingsSection>
