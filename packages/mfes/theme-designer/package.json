@@ -1,0 +1,41 @@
+{
+  "name": "@devcore/mfe-theme-designer",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --port 3003",
+    "build": "tsc && vite build",
+    "serve": "vite preview --port 3003",
+    "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0"
+  },
+  "dependencies": {
+    "@apollo/client": "^3.9.0",
+    "@devcore/ui-core": "workspace:*",
+    "@devcore/ui-composite": "workspace:*",
+    "@devcore/theme-engine": "workspace:*",
+    "@devcore/shared-hooks": "workspace:*",
+    "graphql": "^16.8.1",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
+  },
+  "devDependencies": {
+    "@originjs/vite-plugin-federation": "^1.3.5",
+    "@types/react": "^18.2.0",
+    "@types/react-dom": "^18.2.0",
+    "@typescript-eslint/eslint-plugin": "^7.1.0",
+    "@typescript-eslint/parser": "^7.1.0",
+    "@vitejs/plugin-react": "^4.2.1",
+    "autoprefixer": "^10.4.17",
+    "eslint": "^8.57.0",
+    "eslint-plugin-react-hooks": "^4.6.0",
+    "eslint-plugin-react-refresh": "^0.4.5",
+    "postcss": "^8.4.35",
+    "tailwindcss": "^3.4.1",
+    "typescript": "^5.3.3",
+    "vite": "^5.1.4"
+  },
+  "author": "James Burvel O’Callaghan III",
+  "license": "UNLICENSED",
+  "description": "The Theme Designer micro-frontend for the DevCore application. Allows for dynamic, runtime theme switching and management."
+}
