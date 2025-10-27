@@ -1,90 +1,216 @@
-// Copyright James Burvel O’Callaghan III
-// President Citibank Demo Business Inc.
+/**
+ * @file EnvManager.tsx
+ * @description This micro-frontend provides a user interface for creating and managing .env files.
+ * @module features/EnvManager
+ * @see @/ui/core/Page for layout component.
+ * @see @/ui/core/Button for button component.
+ * @see @/ui/core/Input for input component.
+ * @see @/services/business/useDownloadService for download functionality.
+ * @security This component processes user-provided keys and values which are then compiled into a downloadable
+ * text file. All processing is client-side. No data is transmitted to any server. The generated .env file
+ * may contain secrets and should be handled with care by the user.
+ * @performance The component is highly performant with a low memory footprint. Rendering performance for the list of
+ * variables is O(n) where n is the number of variables. The list is not virtualized, so very large numbers (>1000) of
+ * variables may cause minor UI lag.
+ */
 
-import React, { useState } from 'react';
-import { downloadEnvFile } from '../../services/fileUtils.ts';
-import { DocumentTextIcon, PlusIcon, TrashIcon, ArrowDownTrayIcon } from '../icons.tsx';
+import React, { useReducer, useCallback } from 'react';
 
+// Hypothetical UI framework imports. In a real scenario, these would come from the new UI libraries.
+import { Page } from '@/ui/core/Page';
+import { Header } from '@/ui/core/Header';
+import { Button } from '@/ui/core/Button';
+import { Input } from '@/ui/core/Input';
+import { Icon } from '@/ui/core/Icon';
+import { Table, THead, TBody, Tr, Th, Td } from '@/ui/core/Table';
+
+// Hypothetical service hook, abstracting the infrastructure layer as per architectural directives.
+import { useDownloadService } from '@/services/business/useDownloadService';
+
+/**
+ * Represents a single environment variable with a key and a value.
+ * @interface EnvVar
+ * @property {number} id - A unique identifier for the list item, used for React keys.
+ * @property {string} key - The name of the environment variable (e.g., 'VITE_API_URL').
+ * @property {string} value - The value of the environment variable.
+ */
 interface EnvVar {
     id: number;
     key: string;
     value: string;
 }
 
+type EnvAction =
+    | { type: 'ADD' }
+    | { type: 'UPDATE'; payload: { id: number; field: 'key' | 'value'; value: string } }
+    | { type: 'REMOVE'; payload: { id: number } };
+
+/**
+ * Reducer function to manage the state of environment variables.
+ * Implements logic for adding, updating, and removing variables.
+ * Using a reducer centralizes state logic, making it more predictable and testable.
+ *
+ * @param {EnvVar[]} state - The current array of environment variables.
+ * @param {EnvAction} action - The action to be performed on the state.
+ * @returns {EnvVar[]} The new state after applying the action.
+ * @example
+ * const [state, dispatch] = useReducer(envReducer, initialState);
+ * dispatch({ type: 'ADD' });
+ */
+const envReducer = (state: EnvVar[], action: EnvAction): EnvVar[] => {
+    switch (action.type) {
+        case 'ADD':
+            return [...state, { id: Date.now(), key: '', value: '' }];
+        case 'UPDATE':
+            return state.map(v =>
+                v.id === action.payload.id ? { ...v, [action.payload.field]: action.payload.value } : v
+            );
+        case 'REMOVE':
+            return state.filter(v => v.id !== action.payload.id);
+        default:
+            return state;
+    }
+};
+
+const initialState: EnvVar[] = [
+    { id: 1, key: 'VITE_API_URL', value: 'https://api.example.com' },
+    { id: 2, key: 'VITE_ENABLE_FEATURE_X', value: 'true' },
+];
+
+/**
+ * A micro-frontend component for creating and managing .env files.
+ * It provides a user-friendly interface to add, edit, and remove environment variables,
+ * and allows the user to download the final result as a standard `.env` file.
+ * All operations are performed client-side.
+ *
+ * @component
+ * @returns {React.ReactElement} The rendered EnvManager component.
+ * @example
+ * return (
+ *   <Workspace>
+ *     <EnvManager />
+ *   </Workspace>
+ * )
+ */
 export const EnvManager: React.FC = () => {
-    const [envVars, setEnvVars] = useState<EnvVar[]>([
-        { id: 1, key: 'VITE_API_URL', value: 'https://api.example.com' },
-        { id: 2, key: 'VITE_ENABLE_FEATURE_X', value: 'true' },
-    ]);
+    const [envVars, dispatch] = useReducer(envReducer, initialState);
+    const { download } = useDownloadService();
 
-    const handleAdd = () => {
-        setEnvVars([...envVars, { id: Date.now(), key: '', value: '' }]);
-    };
+    /**
+     * Handles adding a new, empty environment variable to the list.
+     * @function
+     * @returns {void}
+     */
+    const handleAdd = useCallback(() => {
+        dispatch({ type: 'ADD' });
+    }, []);
 
-    const handleUpdate = (id: number, field: 'key' | 'value', val: string) => {
-        setEnvVars(envVars.map(v => v.id === id ? { ...v, [field]: val } : v));
-    };
+    /**
+     * Handles updating a specific field of an environment variable.
+     * @function
+     * @param {number} id - The ID of the variable to update.
+     * @param {'key' | 'value'} field - The field to update ('key' or 'value').
+     * @param {string} value - The new value for the field.
+     * @returns {void}
+     */
+    const handleUpdate = useCallback((id: number, field: 'key' | 'value', value: string) => {
+        dispatch({ type: 'UPDATE', payload: { id, field, value } });
+    }, []);
 
-    const handleRemove = (id: number) => {
-        setEnvVars(envVars.filter(v => v.id !== id));
-    };
-    
-    const handleDownload = () => {
-        const envObject = envVars.reduce((acc, v) => {
-            if (v.key) acc[v.key] = v.value;
-            return acc;
-        }, {} as Record<string, string>);
-        downloadEnvFile(envObject);
-    };
+    /**
+     * Handles removing an environment variable from the list.
+     * @function
+     * @param {number} id - The ID of the variable to remove.
+     * @returns {void}
+     */
+    const handleRemove = useCallback((id: number) => {
+        dispatch({ type: 'REMOVE', payload: { id } });
+    }, []);
+
+    /**
+     * Compiles the current state of environment variables into a .env file string
+     * and triggers a browser download using the download service.
+     * @function
+     * @returns {void}
+     * @see {@link useDownloadService}
+     */
+    const handleDownload = useCallback(() => {
+        const envContent = envVars
+            .filter(v => v.key.trim() !== '') // Ignore variables with empty keys
+            .map(v => `${v.key}=${v.value}`)
+            .join('\n');
+        
+        download({
+            content: envContent,
+            filename: '.env',
+            mimeType: 'text/plain',
+        });
+    }, [envVars, download]);
 
     return (
-        <div className="h-full flex flex-col p-4 sm:p-6 lg:p-8 text-text-primary">
-            <header className="mb-6">
-                <h1 className="text-3xl font-bold flex items-center"><DocumentTextIcon /><span className="ml-3">Environment Variable Manager</span></h1>
-                <p className="text-text-secondary mt-1">Create and manage your `.env` files with a simple interface.</p>
-            </header>
-            <div className="flex-grow bg-surface p-6 rounded-lg border border-border w-full max-w-4xl mx-auto overflow-y-auto">
-                <div className="space-y-3">
-                    <div className="grid grid-cols-12 gap-4 font-semibold text-sm text-text-secondary px-2">
-                        <div className="col-span-5">Key</div>
-                        <div className="col-span-6">Value</div>
-                        <div className="col-span-1"></div>
+        <Page>
+            <Header
+                icon={<Icon name="DocumentTextIcon" />}
+                title="Environment Variable Manager"
+                subtitle="Create and manage your .env files with a simple interface."
+            />
+            <Page.Content>
+                <div className="bg-surface p-6 rounded-lg border border-border w-full max-w-4xl mx-auto">
+                    <Table>
+                        <THead>
+                            <Tr>
+                                <Th className="w-2/5">Key</Th>
+                                <Th className="w-2/5">Value</Th>
+                                <Th className="w-1/5 text-right">Actions</Th>
+                            </Tr>
+                        </THead>
+                        <TBody>
+                            {envVars.map((v, index) => (
+                                <Tr key={v.id}>
+                                    <Td>
+                                        <Input
+                                            type="text"
+                                            value={v.key}
+                                            onChange={e => handleUpdate(v.id, 'key', e.target.value)}
+                                            placeholder={`KEY_${index + 1}`}
+                                            aria-label={`Key for variable ${index + 1}`}
+                                            className="font-mono"
+                                        />
+                                    </Td>
+                                    <Td>
+                                        <Input
+                                            type="text"
+                                            value={v.value}
+                                            onChange={e => handleUpdate(v.id, 'value', e.target.value)}
+                                            placeholder="value"
+                                            aria-label={`Value for variable ${index + 1}`}
+                                            className="font-mono"
+                                        />
+                                    </Td>
+                                    <Td className="text-right">
+                                        <Button
+                                            variant="ghost"
+                                            size="icon"
+                                            onClick={() => handleRemove(v.id)}
+                                            aria-label={`Remove variable ${index + 1}`}
+                                        >
+                                            <Icon name="TrashIcon" />
+                                        </Button>
+                                    </Td>
+                                </Tr>
+                            ))}
+                        </TBody>
+                    </Table>
+                    <div className="mt-4 pt-4 border-t border-border flex justify-between items-center">
+                        <Button variant="secondary" onClick={handleAdd}>
+                            <Icon name="PlusIcon" /> Add Variable
+                        </Button>
+                        <Button onClick={handleDownload} disabled={envVars.length === 0}>
+                            <Icon name="ArrowDownTrayIcon" /> Download .env File
+                        </Button>
                     </div>
-                    {envVars.map((v, index) => (
-                        <div key={v.id} className="grid grid-cols-12 gap-4 items-center">
-                            <div className="col-span-5">
-                                <input
-                                    type="text"
-                                    value={v.key}
-                                    onChange={e => handleUpdate(v.id, 'key', e.target.value)}
-                                    placeholder={`KEY_${index + 1}`}
-                                    className="w-full p-2 bg-background border border-border rounded-md font-mono text-sm"
-                                />
-                            </div>
-                            <div className="col-span-6">
-                                <input
-                                    type="text"
-                                    value={v.value}
-                                    onChange={e => handleUpdate(v.id, 'value', e.target.value)}
-                                    placeholder="value"
-                                    className="w-full p-2 bg-background border border-border rounded-md font-mono text-sm"
-                                />
-                            </div>
-                            <div className="col-span-1">
-                                <button onClick={() => handleRemove(v.id)} className="p-2 text-text-secondary hover:text-red-500 rounded-md"><TrashIcon /></button>
-                            </div>
-                        </div>
-                    ))}
                 </div>
-                 <div className="mt-4 pt-4 border-t border-border flex justify-between items-center">
-                    <button onClick={handleAdd} className="flex items-center gap-2 px-4 py-2 bg-gray-100 text-sm font-semibold rounded-md hover:bg-gray-200">
-                        <PlusIcon /> Add Variable
-                    </button>
-                    <button onClick={handleDownload} disabled={envVars.length === 0} className="btn-primary flex items-center gap-2 px-4 py-2">
-                        <ArrowDownTrayIcon /> Download .env File
-                    </button>
-                </div>
-            </div>
-        </div>
+            </Page.Content>
+        </Page>
     );
 };

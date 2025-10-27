@@ -1,0 +1,40 @@
+{
+  "name": "@jester/ui-core",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Core UI library with atomic, fully accessible components for the Jester platform.",
+  "type": "module",
+  "main": "./dist/ui-core.umd.cjs",
+  "module": "./dist/ui-core.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/ui-core.js",
+      "require": "./dist/ui-core.umd.cjs",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build"
+  },
+  "peerDependencies": {
+    "react": "^19.1.0",
+    "react-dom": "^19.1.1"
+  },
+  "devDependencies": {
+    "@types/react": "19.1.12",
+    "@types/react-dom": "19.1.8",
+    "autoprefixer": "10.4.21",
+    "postcss": "^8.5.6",
+    "react": "19.1.0",
+    "react-dom": "19.1.1",
+    "tailwindcss": "4.1.12",
+    "typescript": "5.9.2",
+    "vite": "7.1.3"
+  },
+  "license": "UNLICENSED"
+}

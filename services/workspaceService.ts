@@ -1,169 +1,278 @@
-// Copyright James Burvel O’Callaghan III
-// President Citibank Demo Business Inc.
+/**
+ * @file workspaceService.ts
+ * @module services/workspaceService
+ * @description This module acts as the client-side interface for all interactions with
+ * Google Workspace services (Docs, Drive, Gmail, etc.). It has been refactored to
+ * align with a federated microservice architecture. All direct GAPI calls have been
+ * removed. Instead, this service constructs and sends authenticated GraphQL requests
+ * to the Backend-for-Frontend (BFF), which then orchestrates calls to downstream
+ * microservices (e.g., GoogleProxyService, AIGatewayService).
+ *
+ * @security This service no longer handles any third-party tokens (e.g., Google OAuth access tokens).
+ * All requests are authenticated via a short-lived JWT, which is managed by a central,
+ * higher-level API client. The BFF is responsible for securely retrieving and using
+ * third-party tokens from a server-side vault. Client-side responsibility is limited
+ * to making authenticated requests to a trusted backend.
+ *
+ * @performance The performance of these functions is primarily dependent on the network latency
+ * between the client and the BFF, and the subsequent orchestration time within the backend.
+ * All operations are asynchronous and should not block the main thread.
+ *
+ * @see bff/schema.graphql - For the complete GraphQL schema.
+ * @see services/apiClient.ts - For the implementation of the `graphqlRequest` function.
+ */
 
+// Assuming a central API client that handles GraphQL requests and JWT authentication.
+import { graphqlRequest } from './apiClient'; // This is a hypothetical import.
+import { logError, measurePerformance } from './telemetryService';
+import type { SlideSummary } from '../types';
 
+// --- Google Docs Service Proxies ---
 
-import { ensureGapiClient } from './googleApiService.ts';
-import { logError } from './telemetryService.ts';
-import type { SlideSummary } from '../types.ts';
-
-declare var gapi: any;
-
-// --- Docs Service ---
+/**
+ * Creates a new Google Document via the BFF.
+ * @param {string} title The title of the new document.
+ * @returns {Promise<{ documentId: string; webViewLink: string }>} A promise that resolves with the new document's ID and URL.
+ * @throws Will throw an error if the GraphQL mutation fails.
+ * @example
+ * const newDoc = await createDocument('My New Project Plan');
+ * window.open(newDoc.webViewLink);
+ */
 export const createDocument = async (title: string): Promise<{ documentId: string; webViewLink: string }> => {
+  return measurePerformance('workspaceService.createDocument', async () => {
+    const mutation = `
+      mutation CreateGoogleDoc($title: String!) {
+        createGoogleDoc(title: $title) {
+          documentId
+          webViewLink
+        }
+      }
+    `;
     try {
-        const isReady = await ensureGapiClient();
-        if (!isReady) throw new Error("Google API client not ready.");
-        
-        await gapi.client.load('https://docs.googleapis.com/$discovery/rest?version=v1');
-
-        const response = await gapi.client.docs.documents.create({ title });
-        const doc = response.result;
-        return { documentId: doc.documentId, webViewLink: `https://docs.google.com/document/d/${doc.documentId}/edit` };
+      const result = await graphqlRequest({ query: mutation, variables: { title } });
+      if (!result.data?.createGoogleDoc) {
+        throw new Error('Invalid response from server for createGoogleDoc');
+      }
+      return result.data.createGoogleDoc;
     } catch (error) {
-        logError(error as Error, { service: 'workspaceService', function: 'createDocument' });
-        throw error;
+      logError(error as Error, { service: 'workspaceService', function: 'createDocument', title });
+      throw new Error(`Failed to create document: ${(error as Error).message}`);
     }
+  });
 };
 
+/**
+ * Inserts text at the beginning of a Google Document via the BFF.
+ * @param {string} documentId The ID of the Google Document to modify.
+ * @param {string} text The text content to insert.
+ * @returns {Promise<void>} A promise that resolves when the text has been inserted.
+ * @throws Will throw an error if the GraphQL mutation fails.
+ * @example
+ * await insertText('some-document-id', 'This is the new heading.');
+ */
 export const insertText = async (documentId: string, text: string): Promise<void> => {
-     try {
-        const isReady = await ensureGapiClient();
-        if (!isReady) throw new Error("Google API client not ready.");
-
-        await gapi.client.load('https://docs.googleapis.com/$discovery/rest?version=v1');
-
-        await gapi.client.docs.documents.batchUpdate({
-            documentId,
-            resource: {
-                requests: [{
-                    insertText: {
-                        text: text,
-                        location: { index: 1 }
-                    }
-                }]
-            }
-        });
+  return measurePerformance('workspaceService.insertText', async () => {
+    const mutation = `
+      mutation InsertTextIntoDoc($documentId: ID!, $text: String!) {
+        insertTextIntoDoc(documentId: $documentId, text: $text) {
+          success
+        }
+      }
+    `;
+    try {
+      const result = await graphqlRequest({ query: mutation, variables: { documentId, text } });
+      if (!result.data?.insertTextIntoDoc?.success) {
+        throw new Error('Server reported failure for insertTextIntoDoc');
+      }
     } catch (error) {
-        logError(error as Error, { service: 'workspaceService', function: 'insertText' });
-        throw error;
+      logError(error as Error, { service: 'workspaceService', function: 'insertText', documentId });
+      throw new Error(`Failed to insert text: ${(error as Error).message}`);
     }
+  });
 };
 
-// --- Drive Service ---
+// --- Google Drive Service Proxies ---
 
-const getDriveClient = async () => {
-    const isReady = await ensureGapiClient();
-    if (!isReady) throw new Error("Google API client not ready.");
-    await gapi.client.load('https://www.googleapis.com/discovery/v1/apis/drive/v3/rest');
-    return gapi.client.drive;
-};
-
+/**
+ * Finds a folder by name in Google Drive or creates it if it doesn't exist, via the BFF.
+ * @param {string} folderName The name of the folder to find or create.
+ * @returns {Promise<string>} A promise that resolves with the folder's ID.
+ * @throws Will throw an error if the GraphQL mutation fails.
+ */
 export const findOrCreateFolder = async (folderName: string): Promise<string> => {
-    try {
-        const drive = await getDriveClient();
-        const query = `mimeType='application/vnd.google-apps.folder' and name='${folderName}' and trashed=false`;
-        const response = await drive.files.list({ q: query, fields: 'files(id, name)' });
-        
-        if (response.result.files && response.result.files.length > 0) {
-            return response.result.files[0].id;
-        } else {
-            const fileMetadata = {
-                name: folderName,
-                mimeType: 'application/vnd.google-apps.folder'
-            };
-            const createResponse = await drive.files.create({ resource: fileMetadata, fields: 'id' });
-            return createResponse.result.id;
+  return measurePerformance('workspaceService.findOrCreateFolder', async () => {
+    const mutation = `
+      mutation FindOrCreateGoogleDriveFolder($folderName: String!) {
+        findOrCreateGoogleDriveFolder(folderName: $folderName) {
+          folderId
         }
+      }
+    `;
+    try {
+      const result = await graphqlRequest({ query: mutation, variables: { folderName } });
+      if (!result.data?.findOrCreateGoogleDriveFolder?.folderId) {
+        throw new Error('Invalid response from server for findOrCreateGoogleDriveFolder');
+      }
+      return result.data.findOrCreateGoogleDriveFolder.folderId;
     } catch (error) {
-        logError(error as Error, { service: 'workspaceService', function: 'findOrCreateFolder' });
-        throw error;
+      logError(error as Error, { service: 'workspaceService', function: 'findOrCreateFolder', folderName });
+      throw new Error(`Failed to find or create folder: ${(error as Error).message}`);
     }
+  });
 };
 
+/**
+ * Uploads a file to a specified folder in Google Drive via the BFF.
+ * The client sends the file content, and the BFF handles the multipart upload to Google Drive.
+ * @param {string} folderId The ID of the parent folder in Google Drive.
+ * @param {string} fileName The desired name for the new file.
+ * @param {string} content The file content as a string. For binary data, this would be base64 encoded.
+ * @param {string} mimeType The MIME type of the file.
+ * @returns {Promise<any>} A promise that resolves with the metadata of the uploaded file.
+ * @throws Will throw an error if the GraphQL mutation fails.
+ * @security The file content is sent to our trusted BFF, which then securely uploads it to Google Drive.
+ * This prevents the client from needing direct upload permissions or complex upload logic.
+ */
 export const uploadFile = async (folderId: string, fileName: string, content: string, mimeType: string): Promise<any> => {
-    try {
-        await getDriveClient(); // Ensures client is loaded
-        
-        const metadata = {
-            name: fileName,
-            parents: [folderId],
-            mimeType,
-        };
-        
-        const form = new FormData();
-        form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
-        form.append('file', new Blob([content], { type: mimeType }));
-
-        const token = sessionStorage.getItem('google_access_token');
-        if (!token) throw new Error("Not authenticated");
-
-        const res = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {
-            method: 'POST',
-            headers: {
-                Authorization: `Bearer ${token}`
-            },
-            body: form
-        });
-        
-        if (!res.ok) {
-            const errorBody = await res.json();
-            throw new Error(`Failed to upload file: ${errorBody.error.message}`);
+  return measurePerformance('workspaceService.uploadFile', async () => {
+    const mutation = `
+      mutation UploadFileToGoogleDrive($folderId: ID!, $fileName: String!, $content: String!, $mimeType: String!) {
+        uploadFileToGoogleDrive(folderId: $folderId, fileName: $fileName, content: $content, mimeType: $mimeType) {
+          id
+          name
+          webViewLink
+          mimeType
         }
-
-        return await res.json();
+      }
+    `;
+    try {
+      const result = await graphqlRequest({
+        query: mutation,
+        variables: { folderId, fileName, content, mimeType }
+      });
+      if (!result.data?.uploadFileToGoogleDrive) {
+        throw new Error('Invalid response from server for uploadFileToGoogleDrive');
+      }
+      return result.data.uploadFileToGoogleDrive;
     } catch (error) {
-        logError(error as Error, { service: 'workspaceService', function: 'uploadFile' });
-        throw error;
+      logError(error as Error, { service: 'workspaceService', function: 'uploadFile', fileName, mimeType });
+      throw new Error(`Failed to upload file: ${(error as Error).message}`);
     }
+  });
 };
 
-// --- Gmail Service ---
+// --- Gmail Service Proxies ---
+
+/**
+ * Sends an email via the BFF, which uses the user's authenticated Gmail account.
+ * @param {string} to The recipient's email address.
+ * @param {string} subject The subject of the email.
+ * @param {string} bodyHtml The HTML content of the email body.
+ * @returns {Promise<any>} A promise that resolves with the result from the Gmail API (e.g., message ID).
+ * @throws Will throw an error if the GraphQL mutation fails.
+ */
 export const sendEmail = async (to: string, subject: string, bodyHtml: string): Promise<any> => {
-    try {
-        const isReady = await ensureGapiClient();
-        if (!isReady) throw new Error("Google API client not ready.");
-        
-        // This might be loaded already by ensureGapiClient, but it's safe to call again.
-        await gapi.client.load('gmail', 'v1');
-
-        const email = [
-            `Content-Type: text/html; charset="UTF-8"`,
-            `MIME-Version: 1.0`,
-            `to: ${to}`,
-            `subject: ${subject}`,
-            ``,
-            bodyHtml
-        ].join('\n');
-
-        // The Gmail API requires the email to be base64url encoded
-        // Standard btoa() creates base64, which needs to be made URL-safe.
-        const base64EncodedEmail = btoa(unescape(encodeURIComponent(email)))
-            .replace(/\+/g, '-')
-            .replace(/\//g, '_')
-            .replace(/=+$/, '');
-
-        const response = await gapi.client.gmail.users.messages.send({
-            'userId': 'me',
-            'resource': {
-                'raw': base64EncodedEmail
-            }
-        });
-
-        return response.result;
-
-    } catch (error) {
-        const gapiError = error as any;
-        if (gapiError.result?.error?.message) {
-             throw new Error(`Gmail API Error: ${gapiError.result.error.message}`);
+  return measurePerformance('workspaceService.sendEmail', async () => {
+    const mutation = `
+      mutation SendGmail($to: String!, $subject: String!, $bodyHtml: String!) {
+        sendGmail(to: $to, subject: $subject, bodyHtml: $bodyHtml) {
+          id
+          threadId
         }
-        logError(error as Error, { service: 'workspaceService', function: 'sendEmail' });
-        throw error;
+      }
+    `;
+    try {
+      const result = await graphqlRequest({ query: mutation, variables: { to, subject, bodyHtml } });
+      if (!result.data?.sendGmail) {
+        throw new Error('Invalid response from server for sendGmail');
+      }
+      return result.data.sendGmail;
+    } catch (error) {
+      logError(error as Error, { service: 'workspaceService', function: 'sendEmail', to, subject });
+      throw new Error(`Failed to send email: ${(error as Error).message}`);
     }
+  });
 };
 
+// --- Stubs for other Workspace services, now pointing to the BFF ---
+// These demonstrate how the pattern would be extended for other services.
 
-// Stubs for other Workspace services
-export const appendRowToSheet = async (sheetId: string, rowData: any[]) => { console.log('appendRowToSheet called', sheetId, rowData); };
-export const createTask = async (listId: string, title: string, notes: string) => { console.log('createTask called', listId, title, notes); };
-export const createCalendarEvent = async (title: string, description: string, date: string) => { console.log('createCalendarEvent called', title, description, date); };
+/**
+ * Appends a row of data to a Google Sheet via the BFF.
+ * @param {string} sheetId The ID of the Google Sheet.
+ * @param {any[]} rowData An array of values for the row.
+ * @returns {Promise<void>}
+ * @throws Will throw an error if the GraphQL mutation fails.
+ */
+export const appendRowToSheet = async (sheetId: string, rowData: any[]): Promise<void> => {
+  console.log('appendRowToSheet call would be proxied to BFF', sheetId, rowData);
+  const mutation = `
+    mutation AppendRowToGoogleSheet($sheetId: ID!, $rowData: [String!]!) {
+      appendRowToGoogleSheet(sheetId: $sheetId, rowData: $rowData) {
+        success
+      }
+    }
+  `;
+  try {
+    await graphqlRequest({ query: mutation, variables: { sheetId, rowData } });
+  } catch (error) {
+      logError(error as Error, { service: 'workspaceService', function: 'appendRowToSheet', sheetId });
+      throw new Error(`Failed to append row to sheet: ${(error as Error).message}`);
+  }
+};
+
+/**
+ * Creates a new task in Google Tasks via the BFF.
+ * @param {string} listId The ID of the task list.
+ * @param {string} title The title of the new task.
+ * @param {string} notes Optional notes for the task.
+ * @returns {Promise<void>}
+ * @throws Will throw an error if the GraphQL mutation fails.
+ */
+export const createTask = async (listId: string, title: string, notes: string): Promise<void> => {
+  console.log('createTask call would be proxied to BFF', listId, title, notes);
+   const mutation = `
+    mutation CreateGoogleTask($listId: ID!, $title: String!, $notes: String) {
+      createGoogleTask(listId: $listId, title: $title, notes: $notes) {
+        id
+        title
+      }
+    }
+  `;
+  try {
+    await graphqlRequest({ query: mutation, variables: { listId, title, notes } });
+  } catch (error) {
+      logError(error as Error, { service: 'workspaceService', function: 'createTask', listId, title });
+      throw new Error(`Failed to create task: ${(error as Error).message}`);
+  }
+};
+
+/**
+ * Creates a new event in Google Calendar via the BFF.
+ * @param {string} title The title of the event.
+ * @param {string} description A description for the event.
+ * @param {string} date The date for the event in ISO format.
+ * @returns {Promise<void>}
+ * @throws Will throw an error if the GraphQL mutation fails.
+ */
+export const createCalendarEvent = async (title: string, description: string, date: string): Promise<void> => {
+  console.log('createCalendarEvent call would be proxied to BFF', title, description, date);
+  const mutation = `
+    mutation CreateGoogleCalendarEvent($title: String!, $description: String, $startTime: String!, $endTime: String!) {
+      createGoogleCalendarEvent(title: $title, description: $description, startTime: $startTime, endTime: $endTime) {
+        id
+        htmlLink
+      }
+    }
+  `;
+  // For simplicity, assuming date is converted to start/end times elsewhere.
+  const startTime = new Date(date).toISOString();
+  const endTime = new Date(new Date(date).getTime() + 60 * 60 * 1000).toISOString(); // 1 hour event
+
+  try {
+    await graphqlRequest({ query: mutation, variables: { title, description, startTime, endTime } });
+  } catch (error) {
+      logError(error as Error, { service: 'workspaceService', function: 'createCalendarEvent', title });
+      throw new Error(`Failed to create calendar event: ${(error as Error).message}`);
+  }
+};

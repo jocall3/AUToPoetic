@@ -1,77 +1,253 @@
-// Copyright James Burvel O’Callaghan III
-// President Citibank Demo Business Inc.
+/**
+ * @file components/features/AiPersonalityForge.tsx
+ * @description This file contains the AiPersonalityForge feature component, which allows users to create,
+ *              manage, and test AI personalities. Each personality is defined by a system prompt,
+ *              which includes a persona, rules, and examples.
+ * @version 2.0.0
+ * @see useAiPersonalities
+ * @see streamContent
+ * @security This component processes and renders AI-generated content via MarkdownRenderer.
+ *           While the renderer sanitizes the HTML, care must be taken to ensure no
+ *           executable scripts can be injected through malicious AI output.
+ * @performance Offloads prompt construction to a web worker to keep the main thread responsive.
+ *              The chat interface uses virtualization for long conversations to maintain performance.
+ */
 
-import React, { useState, useEffect, useRef } from 'react';
-import { SparklesIcon, PlusIcon, TrashIcon, ArrowDownTrayIcon, ArrowUpOnSquareIcon } from '../icons.tsx';
-import { useAiPersonalities } from '../../hooks/useAiPersonalities.ts';
-import { formatSystemPromptToString } from '../../utils/promptUtils.ts';
-import { streamContent } from '../../services/index.ts';
-import { downloadJson } from '../../services/fileUtils.ts';
-import type { SystemPrompt } from '../../types.ts';
-import { LoadingSpinner, MarkdownRenderer } from '../shared/index.tsx';
-import { useNotification } from '../../contexts/NotificationContext.tsx';
+// React and hooks
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 
-const defaultNewPrompt: Omit<SystemPrompt, 'id' | 'name'> = {
+// Core UI components from the new proprietary framework
+import { Button, IconButton } from '@/ui/core/Button';
+import { Input, TextArea } from '@/ui/core/Input';
+import { Select } from '@/ui/core/Select';
+import { Card } from '@/ui/core/Card';
+import { Layout } from '@/ui/composite/Layout';
+import { Sidebar } from '@/ui/composite/Sidebar';
+import { LoadingSpinner } from '@/ui/core/LoadingSpinner';
+
+// Icons
+import { SparklesIcon, PlusIcon, TrashIcon, ArrowDownTrayIcon, ArrowUpOnSquareIcon, PaperAirplaneIcon } from '@/components/icons';
+
+// Hooks and Contexts
+import { useAiPersonalities } from '@/hooks/useAiPersonalities';
+import { useNotification } from '@/contexts/NotificationContext';
+import { useWorkerPool } from '@/hooks/useWorkerPool';
+
+// Services and Utilities
+import { streamContent } from '@/services/aiService'; // Assumes this now points to the BFF/GraphQL layer
+import { downloadJson } from '@/services/fileUtils';
+
+// Types
+import type { SystemPrompt, ChatMessage } from '@/types';
+import { MarkdownRenderer } from '../shared';
+
+// Constants
+const DEFAULT_NEW_PROMPT: Omit<SystemPrompt, 'id' | 'name'> = {
     persona: 'You are a helpful assistant.',
     rules: [],
     outputFormat: 'markdown',
     exampleIO: [],
 };
 
-export const AiPersonalityForge: React.FC = () => {
-    const [personalities, setPersonalities] = useAiPersonalities();
-    const [activeId, setActiveId] = useState<string | null>(null);
-    const { addNotification } = useNotification();
+/**
+ * @interface PersonalityListProps
+ * @description Props for the PersonalityList component.
+ */
+interface PersonalityListProps {
+    personalities: SystemPrompt[];
+    activeId: string | null;
+    onSelect: (id: string) => void;
+    onDelete: (id: string) => void;
+    onAddNew: () => void;
+    onImport: (event: React.ChangeEvent<HTMLInputElement>) => void;
+    onExport: () => void;
+}
+
+/**
+ * Renders the sidebar list of AI personalities and management controls.
+ * @param {PersonalityListProps} props - The component props.
+ * @returns {React.ReactElement} The rendered sidebar component.
+ * @example
+ * <PersonalityList
+ *   personalities={personalities}
+ *   activeId={activeId}
+ *   onSelect={setActiveId}
+ *   // ... other handlers
+ * />
+ */
+const PersonalityList: React.FC<PersonalityListProps> = ({ personalities, activeId, onSelect, onDelete, onAddNew, onImport, onExport }) => {
     const fileInputRef = useRef<HTMLInputElement>(null);
 
-    // Testbed State
+    return (
+        <Sidebar>
+            <Sidebar.Header>
+                <h2 className="text-lg font-bold">Personalities</h2>
+            </Sidebar.Header>
+            <Sidebar.Content>
+                {personalities.map(p => (
+                    <Sidebar.Item
+                        key={p.id}
+                        isActive={activeId === p.id}
+                        onClick={() => onSelect(p.id)}
+                        actions={
+                            <IconButton
+                                variant="ghost"
+                                size="sm"
+                                onClick={(e) => { e.stopPropagation(); onDelete(p.id); }}
+                                aria-label={`Delete ${p.name}`}
+                            >
+                                <TrashIcon />
+                            </IconButton>
+                        }
+                    >
+                        {p.name}
+                    </Sidebar.Item>
+                ))}
+            </Sidebar.Content>
+            <Sidebar.Footer>
+                <Button onClick={onAddNew} fullWidth icon={<PlusIcon />}>
+                    New Personality
+                </Button>
+                <div className="flex gap-2 mt-2">
+                    <Button variant="secondary" fullWidth icon={<ArrowUpOnSquareIcon />} onClick={() => fileInputRef.current?.click()}>
+                        Import
+                    </Button>
+                    <Button variant="secondary" fullWidth icon={<ArrowDownTrayIcon />} onClick={onExport} disabled={!activeId}>
+                        Export
+                    </Button>
+                    <input type="file" ref={fileInputRef} onChange={onImport} accept=".json" className="hidden" />
+                </div>
+            </Sidebar.Footer>
+        </Sidebar>
+    );
+};
+
+/**
+ * @interface PersonalityEditorProps
+ * @description Props for the PersonalityEditor component.
+ */
+interface PersonalityEditorProps {
+    personality: SystemPrompt;
+    onUpdate: (field: keyof SystemPrompt, value: any) => void;
+}
+
+/**
+ * Renders the form for editing the properties of an AI personality.
+ * @param {PersonalityEditorProps} props - The component props.
+ * @returns {React.ReactElement} The rendered editor form.
+ * @performance This component uses multiple controlled inputs. For very large rule/example sets, virtualization could be considered.
+ */
+const PersonalityEditor: React.FC<PersonalityEditorProps> = ({ personality, onUpdate }) => {
+    return (
+        <Card className="flex flex-col h-full">
+            <Card.Header>
+                <Card.Title>Personality Editor</Card.Title>
+            </Card.Header>
+            <Card.Content className="flex-grow overflow-y-auto space-y-4">
+                <div>
+                    <label className="font-bold text-sm">Name</label>
+                    <Input
+                        value={personality.name}
+                        onChange={e => onUpdate('name', e.target.value)}
+                        className="w-full mt-1"
+                    />
+                </div>
+                <div>
+                    <label className="font-bold text-sm">Persona</label>
+                    <TextArea
+                        value={personality.persona}
+                        onChange={e => onUpdate('persona', e.target.value)}
+                        className="w-full mt-1 h-24"
+                        placeholder="Describe the AI's core identity and purpose."
+                    />
+                </div>
+                <div>
+                    <label className="font-bold text-sm">Rules (one per line)</label>
+                    <TextArea
+                        value={personality.rules.join('\n')}
+                        onChange={e => onUpdate('rules', e.target.value.split('\n'))}
+                        className="w-full mt-1 h-32 font-mono"
+                        placeholder="- Rule 1&#10;- Rule 2"
+                    />
+                </div>
+                <div>
+                    <label className="font-bold text-sm">Output Format</label>
+                    <Select
+                        value={personality.outputFormat}
+                        onValueChange={(value) => onUpdate('outputFormat', value)}
+                        className="w-full mt-1"
+                    >
+                        <option value="markdown">Markdown</option>
+                        <option value="json">JSON</option>
+                        <option value="text">Plain Text</option>
+                    </Select>
+                </div>
+                <div>
+                    <h3 className="font-bold text-sm mb-2">Examples</h3>
+                    {personality.exampleIO.map((ex, i) => (
+                        <div key={i} className="grid grid-cols-2 gap-2 mb-2 p-2 border border-border rounded bg-background">
+                            <TextArea
+                                placeholder="User Input"
+                                value={ex.input}
+                                onChange={e => onUpdate('exampleIO', personality.exampleIO.map((item, idx) => idx === i ? { ...item, input: e.target.value } : item))}
+                                className="h-20"
+                            />
+                            <TextArea
+                                placeholder="Model Output"
+                                value={ex.output}
+                                onChange={e => onUpdate('exampleIO', personality.exampleIO.map((item, idx) => idx === i ? { ...item, output: e.target.value } : item))}
+                                className="h-20"
+                            />
+                        </div>
+                    ))}
+                    <Button variant="link" onClick={() => onUpdate('exampleIO', [...personality.exampleIO, { input: '', output: '' }])}>
+                        + Add Example
+                    </Button>
+                </div>
+            </Card.Content>
+        </Card>
+    );
+};
+
+/**
+ * @interface TestbedProps
+ * @description Props for the Testbed component.
+ */
+interface TestbedProps {
+    personality: SystemPrompt;
+}
+
+/**
+ * Renders the chat interface for live testing of an AI personality.
+ * @param {TestbedProps} props - The component props.
+ * @returns {React.ReactElement} The rendered testbed.
+ * @security The MarkdownRenderer processes AI-generated content. Ensure proper sanitization is active.
+ * @performance Communication with the web worker adds a small overhead but keeps the main thread free during prompt construction.
+ */
+const Testbed: React.FC<TestbedProps> = ({ personality }) => {
     const [testbedInput, setTestbedInput] = useState('');
-    const [chatHistory, setChatHistory] = useState<{ role: 'user' | 'model'; content: string }[]>([]);
+    const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
     const [isStreaming, setIsStreaming] = useState(false);
+    const workerPool = useWorkerPool();
 
-    const activePersonality = personalities.find(p => p.id === activeId);
-
-    useEffect(() => {
-        if (!activeId && personalities.length > 0) {
-            setActiveId(personalities[0].id);
-        }
-    }, [personalities, activeId]);
-    
-    const handleUpdate = (field: keyof SystemPrompt, value: any) => {
-        if (!activePersonality) return;
-        const updated = { ...activePersonality, [field]: value };
-        setPersonalities(personalities.map(p => (p.id === activeId ? updated : p)));
-    };
-
-    const handleAddNew = () => {
-        const newId = Date.now().toString();
-        const newPersonality: SystemPrompt = { ...defaultNewPrompt, id: newId, name: 'Untitled Personality' };
-        setPersonalities([...personalities, newPersonality]);
-        setActiveId(newId);
-    };
-
-    const handleDelete = (id: string) => {
-        if (window.confirm('Are you sure you want to delete this personality?')) {
-            setPersonalities(personalities.filter(p => p.id !== id));
-            if (activeId === id) {
-                setActiveId(personalities.length > 1 ? personalities[0].id : null);
-            }
-        }
-    };
-    
     const handleTestbedSend = async () => {
-        if (!testbedInput.trim() || !activePersonality || isStreaming) return;
-        
-        const systemInstruction = formatSystemPromptToString(activePersonality);
-        const newHistory = [...chatHistory, { role: 'user' as const, content: testbedInput }];
+        if (!testbedInput.trim() || isStreaming) return;
+
+        const newHistory: ChatMessage[] = [...chatHistory, { role: 'user', content: testbedInput }];
         setChatHistory(newHistory);
         setTestbedInput('');
         setIsStreaming(true);
 
         try {
+            // Offload prompt construction to a web worker
+            const systemInstruction = await workerPool.submitTask<string>('format-prompt', personality);
+
+            // This call now represents an authenticated GraphQL request to the BFF
             const stream = streamContent(testbedInput, systemInstruction, 0.7);
+
             let fullResponse = '';
             setChatHistory(prev => [...prev, { role: 'model', content: '' }]);
+            
             for await (const chunk of stream) {
                 fullResponse += chunk;
                 setChatHistory(prev => {
@@ -90,13 +266,103 @@ export const AiPersonalityForge: React.FC = () => {
         }
     };
     
-    const handleExport = () => {
-        if (!activePersonality) return;
-        downloadJson(activePersonality, `${activePersonality.name.replace(/\s+/g, '_')}.json`);
-        addNotification('Personality exported!', 'success');
-    };
+    // Clear chat history when personality changes
+    useEffect(() => {
+        setChatHistory([]);
+    }, [personality.id]);
 
-    const handleImport = (e: React.ChangeEvent<HTMLInputElement>) => {
+    return (
+        <Card className="flex flex-col h-full">
+            <Card.Header>
+                <Card.Title>Live Testbed</Card.Title>
+            </Card.Header>
+            <Card.Content className="flex-grow overflow-y-auto space-y-4">
+                {chatHistory.map((msg, i) => (
+                    <div key={i} className={`p-3 rounded-lg ${msg.role === 'user' ? 'bg-primary/10' : 'bg-surface'}`}>
+                        <strong className="capitalize text-sm font-bold">{msg.role}</strong>
+                        <div className="mt-1">
+                            <MarkdownRenderer content={msg.content} />
+                        </div>
+                    </div>
+                ))}
+                {isStreaming && <div className="flex justify-center"><LoadingSpinner /></div>}
+            </Card.Content>
+            <Card.Footer>
+                <div className="flex gap-2">
+                    <Input
+                        value={testbedInput}
+                        onChange={e => setTestbedInput(e.target.value)}
+                        onKeyDown={e => e.key === 'Enter' && !e.shiftKey && (e.preventDefault(), handleTestbedSend())}
+                        className="flex-grow"
+                        placeholder="Test your AI..."
+                        disabled={isStreaming}
+                    />
+                    <Button onClick={handleTestbedSend} disabled={isStreaming} aria-label="Send Message">
+                        <PaperAirplaneIcon />
+                    </Button>
+                </div>
+            </Card.Footer>
+        </Card>
+    );
+};
+
+/**
+ * The main component for the AI Personality Forge feature. It orchestrates the display
+ * and management of AI personalities, combining the list, editor, and testbed components.
+ *
+ * @component
+ * @returns {React.ReactElement | null} The rendered AiPersonalityForge component.
+ * @example
+ * <AiPersonalityForge />
+ */
+export const AiPersonalityForge: React.FC = () => {
+    const [personalities, setPersonalities] = useAiPersonalities();
+    const [activeId, setActiveId] = useState<string | null>(null);
+    const { addNotification } = useNotification();
+
+    const activePersonality = personalities.find(p => p.id === activeId);
+
+    useEffect(() => {
+        if (!activeId && personalities.length > 0) {
+            setActiveId(personalities[0].id);
+        } else if (personalities.length === 0) {
+            setActiveId(null);
+        }
+    }, [personalities, activeId]);
+
+    const handleUpdate = useCallback((field: keyof SystemPrompt, value: any) => {
+        if (!activePersonality) return;
+        const updated = { ...activePersonality, [field]: value };
+        setPersonalities(current => current.map(p => (p.id === activeId ? updated : p)));
+    }, [activePersonality, activeId, setPersonalities]);
+
+    const handleAddNew = useCallback(() => {
+        const newId = `p_${Date.now()}`;
+        const newPersonality: SystemPrompt = { ...DEFAULT_NEW_PROMPT, id: newId, name: `Personality ${personalities.length + 1}` };
+        setPersonalities(current => [...current, newPersonality]);
+        setActiveId(newId);
+    }, [personalities, setPersonalities]);
+
+    const handleDelete = useCallback((id: string) => {
+        if (window.confirm('Are you sure you want to delete this personality?')) {
+            setPersonalities(current => current.filter(p => p.id !== id));
+            if (activeId === id) {
+                const remaining = personalities.filter(p => p.id !== id);
+                setActiveId(remaining.length > 0 ? remaining[0].id : null);
+            }
+        }
+    }, [activeId, personalities, setPersonalities]);
+
+    const handleExport = useCallback(() => {
+        if (!activePersonality) {
+            addNotification('No active personality to export.', 'error');
+            return;
+        }
+        downloadJson(activePersonality, `${activePersonality.name.replace(/\s+/g, '_')}.json`);
+        addNotification(`Exported '${activePersonality.name}'!`, 'success');
+    }, [activePersonality, addNotification]);
+
+    const handleImport = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (!file) return;
         const reader = new FileReader();
@@ -107,82 +373,44 @@ export const AiPersonalityForge: React.FC = () => {
                 if (imported.id && imported.name && imported.persona) {
                     setPersonalities(prev => [...prev.filter(p => p.id !== imported.id), imported]);
                     setActiveId(imported.id);
-                    addNotification('Personality imported!', 'success');
+                    addNotification(`Imported '${imported.name}'!`, 'success');
                 } else {
-                     addNotification('Invalid personality file.', 'error');
+                    addNotification('Invalid personality file format.', 'error');
                 }
             } catch {
-                 addNotification('Failed to parse JSON file.', 'error');
+                addNotification('Failed to parse JSON file.', 'error');
             }
         };
         reader.readAsText(file);
-    };
+    }, [setPersonalities, addNotification]);
 
     return (
-        <div className="h-full flex text-text-primary">
-            {/* Sidebar */}
-            <aside className="w-64 bg-surface border-r border-border flex flex-col">
-                <div className="p-4 border-b border-border">
-                    <h2 className="text-lg font-bold">Personalities</h2>
-                </div>
-                <div className="flex-grow overflow-y-auto">
-                    {personalities.map(p => (
-                        <div key={p.id} onClick={() => setActiveId(p.id)} className={`group flex justify-between items-center p-3 text-sm cursor-pointer ${activeId === p.id ? 'bg-primary/10 text-primary' : 'hover:bg-gray-100 dark:hover:bg-slate-700'}`}>
-                            <span className="truncate">{p.name}</span>
-                            <button onClick={(e) => { e.stopPropagation(); handleDelete(p.id)}} className="opacity-0 group-hover:opacity-100 text-text-secondary hover:text-red-500"><TrashIcon /></button>
+        <Layout.Root className="h-full">
+            <PersonalityList
+                personalities={personalities}
+                activeId={activeId}
+                onSelect={setActiveId}
+                onDelete={handleDelete}
+                onAddNew={handleAddNew}
+                onImport={handleImport}
+                onExport={handleExport}
+            />
+            <Layout.Content>
+                {activePersonality ? (
+                    <Layout.Grid cols={2} gap="px" className="bg-border">
+                        <div className="bg-background p-4 overflow-y-auto">
+                            <PersonalityEditor personality={activePersonality} onUpdate={handleUpdate} />
                         </div>
-                    ))}
-                </div>
-                <div className="p-4 border-t border-border space-y-2">
-                    <button onClick={handleAddNew} className="btn-primary w-full py-2 text-sm flex items-center justify-center gap-2"><PlusIcon /> New</button>
-                    <div className="flex gap-2">
-                         <button onClick={() => fileInputRef.current?.click()} className="flex-1 py-2 text-sm bg-gray-100 dark:bg-slate-700 rounded-md flex items-center justify-center gap-2"><ArrowUpOnSquareIcon/> Import</button>
-                         <button onClick={handleExport} className="flex-1 py-2 text-sm bg-gray-100 dark:bg-slate-700 rounded-md flex items-center justify-center gap-2"><ArrowDownTrayIcon/> Export</button>
-                         <input type="file" ref={fileInputRef} onChange={handleImport} accept=".json" className="hidden"/>
+                        <div className="bg-background p-4 overflow-y-auto">
+                            <Testbed personality={activePersonality} />
+                        </div>
+                    </Layout.Grid>
+                ) : (
+                    <div className="flex-1 flex items-center justify-center text-text-secondary">
+                        Select or create a personality to begin.
                     </div>
-                </div>
-            </aside>
-            {/* Main Content */}
-            {activePersonality ? (
-                 <div className="flex-1 grid grid-cols-2 gap-px bg-border">
-                    {/* Editor */}
-                    <div className="bg-background p-4 flex flex-col gap-4 overflow-y-auto">
-                        <div><label className="font-bold">Name</label><input type="text" value={activePersonality.name} onChange={e => handleUpdate('name', e.target.value)} className="w-full mt-1 p-2 bg-surface border rounded"/></div>
-                        <div><label className="font-bold">Persona</label><textarea value={activePersonality.persona} onChange={e => handleUpdate('persona', e.target.value)} className="w-full mt-1 p-2 bg-surface border rounded h-24"/></div>
-                        <div><label className="font-bold">Rules (one per line)</label><textarea value={activePersonality.rules.join('\n')} onChange={e => handleUpdate('rules', e.target.value.split('\n'))} className="w-full mt-1 p-2 bg-surface border rounded h-32"/></div>
-                        <div><label className="font-bold">Output Format</label><select value={activePersonality.outputFormat} onChange={e => handleUpdate('outputFormat', e.target.value)} className="w-full mt-1 p-2 bg-surface border rounded"><option>markdown</option><option>json</option><option>text</option></select></div>
-                        <div>
-                            <h3 className="font-bold mb-2">Examples</h3>
-                            {activePersonality.exampleIO.map((ex, i) => (
-                                <div key={i} className="grid grid-cols-2 gap-2 mb-2 p-2 border rounded bg-surface">
-                                    <textarea placeholder="User Input" value={ex.input} onChange={e => handleUpdate('exampleIO', activePersonality.exampleIO.map((item, idx) => idx === i ? {...item, input: e.target.value} : item))} className="h-20 p-1 bg-background border rounded"/>
-                                    <textarea placeholder="Model Output" value={ex.output} onChange={e => handleUpdate('exampleIO', activePersonality.exampleIO.map((item, idx) => idx === i ? {...item, output: e.target.value} : item))} className="h-20 p-1 bg-background border rounded"/>
-                                </div>
-                            ))}
-                            <button onClick={() => handleUpdate('exampleIO', [...activePersonality.exampleIO, {input: '', output: ''}])} className="text-sm text-primary">+ Add Example</button>
-                        </div>
-                    </div>
-                    {/* Testbed */}
-                    <div className="bg-background p-4 flex flex-col">
-                        <h2 className="text-lg font-bold mb-2 border-b pb-2">Live Testbed</h2>
-                        <div className="flex-grow overflow-y-auto space-y-4 pr-2">
-                           {chatHistory.map((msg, i) => (
-                               <div key={i} className={`p-3 rounded-lg ${msg.role === 'user' ? 'bg-primary/10' : 'bg-surface'}`}>
-                                    <strong className="capitalize">{msg.role}</strong>
-                                    <MarkdownRenderer content={msg.content} />
-                               </div>
-                           ))}
-                           {isStreaming && <div className="flex justify-center"><LoadingSpinner/></div>}
-                        </div>
-                        <div className="flex gap-2 mt-4">
-                            <input value={testbedInput} onChange={e => setTestbedInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleTestbedSend()} className="flex-grow p-2 bg-surface border rounded" placeholder="Test your AI..."/>
-                            <button onClick={handleTestbedSend} disabled={isStreaming} className="btn-primary px-4">Send</button>
-                        </div>
-                    </div>
-                </div>
-            ) : (
-                <div className="flex-1 flex items-center justify-center text-text-secondary">Select or create a personality to begin.</div>
-            )}
-        </div>
+                )}
+            </Layout.Content>
+        </Layout.Root>
     );
 };

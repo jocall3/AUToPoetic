@@ -1,0 +1,59 @@
+{
+  "$schema": "https://typedoc.org/schema.json",
+  "entryPoints": [
+    "./App.tsx",
+    "./components",
+    "./contexts",
+    "./hooks",
+    "./services",
+    "./types.ts",
+    "./utils",
+    "./constants.tsx"
+  ],
+  "entryPointStrategy": "expand",
+  "out": "documentation-portal",
+  "name": "DevCore AI Toolkit - Technical Documentation",
+  "readme": "README.md",
+  "tsconfig": "tsconfig.json",
+  "exclude": [
+    "**/node_modules/**",
+    "dist/**",
+    ".github/**",
+    "public/**",
+    "articles/**",
+    "docs/**",
+    "**/*.d.ts"
+  ],
+  "theme": "default",
+  "categorizeByGroup": true,
+  "sort": [
+    "kind",
+    "source-order"
+  ],
+  "gitRevision": "main",
+  "customTags": [
+    {
+      "tag": "security",
+      "displayName": "Security Considerations"
+    },
+    {
+      "tag": "performance",
+      "displayName": "Performance Implications"
+    }
+  ],
+  "searchInComments": true,
+  "searchInDocuments": true,
+  "visibilityFilters": {
+    "protected": false,
+    "private": false,
+    "inherited": true,
+    "external": false,
+    "@internal": false
+  },
+  "navigationLinks": {
+    "GitHub Repository": "https://github.com/your-org/your-repo"
+  },
+  "sidebarLinks": {
+    "Project README": "README.md"
+  }
+}

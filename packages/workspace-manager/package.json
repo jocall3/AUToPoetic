@@ -1,0 +1,50 @@
+{
+  "name": "@devcore/workspace-manager",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Manages the workspace, windowing system, and layout providers for the DevCore federated micro-frontend shell.",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "sideEffects": false,
+  "publishConfig": {
+    "access": "restricted"
+  },
+  "scripts": {
+    "build": "vite build",
+    "dev": "vite",
+    "test": "vitest",
+    "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
+    "typecheck": "tsc --noEmit"
+  },
+  "peerDependencies": {
+    "react": "^19.1.0",
+    "react-dom": "^19.1.1"
+  },
+  "dependencies": {
+    "@devcore/core-ui": "workspace:*",
+    "@devcore/theme-engine": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/react": "^19.1.12",
+    "@types/react-dom": "^19.1.8",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.1",
+    "typescript": "^5.9.2",
+    "vite": "^7.1.3",
+    "vitest": "^2.0.2"
+  },
+  "license": "UNLICENSED",
+  "author": "Citibank Demo Business Inc."
+}

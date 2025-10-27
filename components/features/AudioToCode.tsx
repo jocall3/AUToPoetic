@@ -1,109 +1,229 @@
-// Copyright James Burvel O’Callaghan III
-// President Citibank Demo Business Inc.
+/**
+ * @fileoverview This file contains the AudioToCode feature component, which allows
+ * users to record audio and have it transcribed into code using an AI service.
+ * @module components/features/AudioToCode
+ * @see BffGraphQLClient
+ * @see WorkerPoolManager
+ * @see AudioRecordingService
+ */
 
-import React, { useState, useRef, useCallback } from 'react';
-import { transcribeAudioToCodeStream, blobToBase64 } from '../../services/index.ts';
-import { MicrophoneIcon } from '../icons.tsx';
-import { LoadingSpinner } from '../shared/index.tsx';
-import { MarkdownRenderer } from '../shared/index.tsx';
+import React, { useState, useCallback, useEffect } from 'react';
+// Assume these are from a new Core UI library
+import { Button } from '../../ui/core/Button';
+import { Card } from '../../ui/core/Card';
+import { Typography } from '../../ui/core/Typography';
+import { Layout } from '../../ui/composite/Layout';
+// Assume these are custom hooks providing access to dependency-injected services
+import { useService } from '../../hooks/useService'; 
+// Assume these are interfaces for the new services
+import type { AudioRecordingService } from '../../services/business/AudioRecordingService';
+import type { WorkerPoolManager } from '../../services/infrastructure/WorkerPoolManager';
+import type { BffGraphQLClient } from '../../services/infrastructure/BffGraphQLClient';
+// Standard shared components
+import { LoadingSpinner } from '../shared/LoadingSpinner';
+import { MarkdownRenderer } from '../shared/MarkdownRenderer';
+// Icons
+import { MicrophoneIcon, StopIcon } from '../icons';
 
+/**
+ * @typedef {'idle' | 'recording' | 'transcribing' | 'success' | 'error'} TranscriptionStatus
+ * Represents the various states of the audio-to-code process.
+ */
+type TranscriptionStatus = 'idle' | 'recording' | 'transcribing' | 'success' | 'error';
+
+/**
+ * @interface AudioToCodeState
+ * Defines the state structure managed by the useAudioToCode hook.
+ * @property {TranscriptionStatus} status - The current status of the transcription process.
+ * @property {string} generatedCode - The resulting code from transcription.
+ * @property {string | null} error - Any error message from the process.
+ */
+interface AudioToCodeState {
+  status: TranscriptionStatus;
+  generatedCode: string;
+  error: string | null;
+}
+
+/**
+ * @interface AudioToCodeActions
+ * Defines the actions exposed by the useAudioToCode hook to interact with the component's logic.
+ * @property {() => void} toggleRecording - Starts or stops the audio recording.
+ */
+interface AudioToCodeActions {
+  toggleRecording: () => void;
+}
+
+/**
+ * @hook useAudioToCode
+ * @description A custom hook that encapsulates all business logic for the AudioToCode feature.
+ * It manages recording state, offloads processing to a web worker, and communicates with the backend.
+ * @returns {{ state: AudioToCodeState, actions: AudioToCodeActions }} An object containing the component's state and actions.
+ * @performance Offloads blob-to-base64 conversion to a web worker via the WorkerPoolManager to keep the main thread responsive.
+ * The transcription process itself is network-bound.
+ * @security Requests microphone access from the user. Audio data is encoded and sent to a secure backend service for processing.
+ * No audio is stored client-side after processing.
+ */
+const useAudioToCode = (): { state: AudioToCodeState; actions: AudioToCodeActions } => {
+  const [state, setState] = useState<AudioToCodeState>({
+    status: 'idle',
+    generatedCode: '',
+    error: null,
+  });
+
+  // Services are retrieved from a hypothetical dependency injection container via a hook.
+  const audioRecordingService = useService<AudioRecordingService>('AudioRecordingService');
+  const workerPoolManager = useService<WorkerPoolManager>('WorkerPoolManager');
+  const bffClient = useService<BffGraphQLClient>('BffGraphQLClient');
+
+  /**
+   * @function handleTranscription
+   * @description Callback function executed when recording stops. It processes the audio blob.
+   * @param {Blob} audioBlob - The recorded audio data.
+   * @private
+   */
+  const handleTranscription = useCallback(async (audioBlob: Blob) => {
+    if (audioBlob.size === 0) {
+      setState({ status: 'error', generatedCode: '', error: 'Recording was empty.' });
+      return;
+    }
+
+    setState(s => ({ ...s, status: 'transcribing', error: null }));
+
+    try {
+      // Offload the expensive base64 encoding to a web worker.
+      const base64Audio = await workerPoolManager.submitTask<string>({
+        task: 'ENCODE_BLOB_TO_BASE64',
+        payload: audioBlob,
+      });
+
+      // Make a GraphQL request to the BFF, which then calls the AIGatewayService.
+      const stream = bffClient.streamQuery({
+        query: `
+          mutation TranscribeAudio($audioData: String!, $mimeType: String!) {
+            transcribeAudioToCode(audioData: $audioData, mimeType: $mimeType)
+          }
+        `,
+        variables: { audioData: base64Audio, mimeType: audioBlob.type },
+      });
+      
+      let fullResponse = '';
+      for await (const chunk of stream) {
+        // Assuming chunk is of shape { data: { transcribeAudioToCode: "..." } }
+        fullResponse += chunk.data.transcribeAudioToCode;
+        setState(s => ({ ...s, generatedCode: fullResponse }));
+      }
+
+      setState(s => ({ ...s, status: 'success' }));
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'An unknown error occurred.';
+      setState({ status: 'error', generatedCode: '', error: `Transcription failed: ${errorMessage}` });
+    }
+  }, [workerPoolManager, bffClient]);
+
+  useEffect(() => {
+    // Subscribe to events from the AudioRecordingService.
+    const unsubscribe = audioRecordingService.onStop(handleTranscription);
+    return () => unsubscribe();
+  }, [audioRecordingService, handleTranscription]);
+
+  /**
+   * @function toggleRecording
+   * @description Starts or stops the audio recording process.
+   */
+  const toggleRecording = useCallback(async () => {
+    if (state.status === 'recording') {
+      await audioRecordingService.stop();
+      // Status will change to 'transcribing' via the onStop callback.
+    } else {
+      setState({ status: 'idle', generatedCode: '', error: null });
+      try {
+        await audioRecordingService.start();
+        setState(s => ({ ...s, status: 'recording' }));
+      } catch (err) {
+        const errorMessage = err instanceof Error ? err.message : 'Could not start recording.';
+        setState({ status: 'error', generatedCode: '', error: errorMessage });
+      }
+    }
+  }, [state.status, audioRecordingService]);
+
+  return { state, actions: { toggleRecording } };
+};
+
+/**
+ * @component AudioToCode
+ * @description A feature component that enables users to record audio and have it
+ * transcribed into code by an AI service. This component is a thin presentation
+ * layer, with all logic encapsulated in the `useAudioToCode` hook.
+ * @example
+ * ```jsx
+ * <AudioToCode />
+ * ```
+ * @returns {React.ReactElement} The rendered AudioToCode component.
+ */
 export const AudioToCode: React.FC = () => {
-    const [isRecording, setIsRecording] = useState(false);
-    const [isLoading, setIsLoading] = useState(false);
-    const [code, setCode] = useState('');
-    const [error, setError] = useState('');
-    const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-    const audioChunksRef = useRef<Blob[]>([]);
+  const { state, actions } = useAudioToCode();
+  const { status, generatedCode, error } = state;
 
-    const handleStartRecording = async () => {
-        setError('');
-        setCode('');
-        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-            setError('Audio recording is not supported by your browser.');
-            return;
-        }
-        try {
-            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            mediaRecorderRef.current = new MediaRecorder(stream);
-            mediaRecorderRef.current.ondataavailable = event => {
-                audioChunksRef.current.push(event.data);
-            };
-            mediaRecorderRef.current.onstop = handleTranscribe;
-            mediaRecorderRef.current.start();
-            setIsRecording(true);
-        } catch (err) {
-            setError('Microphone access was denied. Please enable it in your browser settings.');
-        }
-    };
+  const getStatusMessage = (): string => {
+    switch (status) {
+      case 'idle': return 'Click the microphone to start speaking your code.';
+      case 'recording': return 'Recording in progress... Click to stop.';
+      case 'transcribing': return 'Transcribing your masterpiece...';
+      case 'success': return 'Transcription complete. You can record another idea.';
+      case 'error': return 'An error occurred. Please try again.';
+      default: return '';
+    }
+  };
 
-    const handleStopRecording = () => {
-        if (mediaRecorderRef.current && isRecording) {
-            mediaRecorderRef.current.stop();
-            mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop());
-            setIsRecording(false);
-            setIsLoading(true);
-        }
-    };
+  const isRecording = status === 'recording';
 
-    const handleTranscribe = useCallback(async () => {
-        if (audioChunksRef.current.length === 0) {
-            setIsLoading(false);
-            return;
-        }
-        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
-        audioChunksRef.current = [];
-        try {
-            const base64Audio = await blobToBase64(audioBlob);
-            const stream = transcribeAudioToCodeStream(base64Audio, 'audio/webm');
-            let fullResponse = '';
-            for await (const chunk of stream) {
-                fullResponse += chunk;
-                setCode(fullResponse);
-            }
-        } catch (err) {
-            const errorMessage = err instanceof Error ? err.message : 'An unknown error occurred.';
-            setError(`Failed to transcribe audio: ${errorMessage}`);
-        } finally {
-            setIsLoading(false);
-        }
-    }, []);
+  return (
+    <Layout.Container variant="feature" className="flex flex-col items-center p-4 sm:p-6 lg:p-8">
+      <header className="text-center mb-6">
+        <Typography.H1 className="flex items-center justify-center">
+          <MicrophoneIcon />
+          <span className="ml-3">AI Audio-to-Code</span>
+        </Typography.H1>
+        <Typography.P variant="secondary" className="mt-1">
+          Speak your programming ideas and watch them turn into code.
+        </Typography.P>
+      </header>
 
-    return (
-        <div className="h-full flex flex-col p-4 sm:p-6 lg:p-8 text-text-primary">
-            <header className="mb-6 text-center">
-                <h1 className="text-3xl font-bold flex items-center justify-center">
-                    <MicrophoneIcon />
-                    <span className="ml-3">AI Audio-to-Code</span>
-                </h1>
-                <p className="text-text-secondary mt-1">Speak your programming ideas and watch them turn into code.</p>
-            </header>
-            <div className="flex-grow flex flex-col items-center gap-6 min-h-0">
-                <div className="flex flex-col items-center justify-center bg-surface p-6 rounded-lg w-full max-w-lg border border-border">
-                     <button
-                        onClick={isRecording ? handleStopRecording : handleStartRecording}
-                        className={`w-24 h-24 rounded-full flex items-center justify-center text-white font-bold text-lg transition-all ${isRecording ? 'bg-red-500 animate-pulse' : 'bg-primary'}`}
-                        disabled={isLoading}
-                    >
-                        {isLoading ? <LoadingSpinner/> : isRecording ? 'Stop' : 'Record'}
-                    </button>
-                    <p className="mt-4 text-text-secondary">
-                        {isLoading ? 'Transcribing...' : isRecording ? 'Recording in progress...' : 'Click to start recording'}
-                    </p>
-                </div>
-                 <div className="flex flex-col h-full w-full max-w-3xl">
-                    <label className="text-sm font-medium text-text-secondary mb-2">Generated Code</label>
-                    <div className="flex-grow p-1 bg-background border border-border rounded-md overflow-y-auto min-h-[200px]">
-                        {isLoading && !code && (
-                            <div className="flex items-center justify-center h-full"><LoadingSpinner /></div>
-                        )}
-                        {error && <p className="p-4 text-red-500">{error}</p>}
-                        {code && <MarkdownRenderer content={code} />}
-                        {!isLoading && !code && !error && (
-                            <div className="text-text-secondary h-full flex items-center justify-center">Code will appear here.</div>
-                        )}
-                    </div>
-                </div>
-            </div>
+      <Card className="w-full max-w-lg p-6 flex flex-col items-center justify-center">
+        <Button
+          variant={isRecording ? 'destructive' : 'primary'}
+          size="icon-lg"
+          onClick={actions.toggleRecording}
+          disabled={status === 'transcribing'}
+          aria-label={isRecording ? 'Stop recording' : 'Start recording'}
+          className="w-24 h-24 rounded-full"
+        >
+          {status === 'transcribing' ? <LoadingSpinner /> : isRecording ? <StopIcon /> : <MicrophoneIcon />}
+        </Button>
+        <Typography.P variant="secondary" className="mt-4">
+          {getStatusMessage()}
+        </Typography.P>
+      </Card>
+      
+      {error && (
+        <Card variant="error" className="w-full max-w-3xl mt-6 p-4">
+          <Typography.P>{error}</Typography.P>
+        </Card>
+      )}
+
+      {(status === 'transcribing' || status === 'success') && (
+        <div className="w-full max-w-3xl mt-6 flex flex-col flex-grow min-h-[200px]">
+          <Typography.Label htmlFor="generated-code-output">Generated Code</Typography.Label>
+          <Card id="generated-code-output" className="flex-grow mt-2 overflow-y-auto">
+            {status === 'transcribing' && !generatedCode && (
+              <div className="flex items-center justify-center h-full">
+                <LoadingSpinner />
+              </div>
+            )}
+            {generatedCode && <MarkdownRenderer content={'```javascript\n' + generatedCode + '\n```'} />}
+          </Card>
         </div>
-    );
+      )}
+    </Layout.Container>
+  );
 };

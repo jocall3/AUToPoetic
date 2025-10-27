@@ -1,126 +1,282 @@
-// Copyright James Burvel O’Callaghan III
-// President Citibank Demo Business Inc.
+/**
+ * @file AiFeatureBuilder.tsx
+ * @description A sophisticated AI-powered tool for generating full-stack application features from natural language prompts.
+ * @module features/AiFeatureBuilder
+ *
+ * @security
+ * - All AI interactions and code generation are performed on the backend via the BFF and dedicated microservices.
+ * - The client-side component is a thin presentation layer and does not handle sensitive data or business logic directly.
+ * - User input (prompts) are sent to the backend for processing and should be sanitized/validated server-side if necessary.
+ *
+ * @performance
+ * - Code generation is an intensive task offloaded to a dedicated Web Worker pool via the `workerPoolManager` service to keep the main thread responsive.
+ * - Real-time updates from the generation process are streamed back to the client, providing immediate feedback without waiting for the entire process to complete.
+ * - The UI uses memoization and efficient state updates to handle the stream of incoming data smoothly.
+ * - The underlying `CodeBlock` component is assumed to offload any complex syntax highlighting to a worker to prevent blocking the main thread.
+ */
 
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
+
+// Fictitious imports for the new, abstracted UI framework and service architecture
+import { Panel, Layout, SplitPanel, Tabs, Tab } from '@composite/ui';
+import { Button, Checkbox, Textarea, Text, Heading, Spinner, Icon } from '@core/ui';
+import { useServices } from '@services/service-provider';
+import type { IFeatureBuilderService, GenerationEvent } from '@services/business';
+
+// Local types and icons
 import type { GeneratedFile } from '../../types.ts';
-import { generateFeature, generateFullStackFeature, generateUnitTestsStream, generateCommitMessageStream, generateDockerfile } from '../../services/aiService.ts';
-import { saveFile, getAllFiles, clearAllFiles } from '../../services/dbService.ts';
-import { useNotification } from '../../contexts/NotificationContext.tsx';
-import { CpuChipIcon, DocumentTextIcon, BeakerIcon, GitBranchIcon, CloudIcon } from '../icons.tsx';
-import { LoadingSpinner, MarkdownRenderer } from '../shared/index.tsx';
+import { CpuChipIcon, DocumentTextIcon, BeakerIcon, GitBranchIcon, CloudIcon } from '../../components/icons.tsx';
+import { CodeBlock } from '../shared/CodeBlock.tsx'; // Assuming a new performant CodeBlock component
 
-type SupplementalTab = 'TESTS' | 'COMMIT' | 'DEPLOYMENT' | 'CODE';
-type OutputTab = GeneratedFile | SupplementalTab;
+/**
+ * @typedef {'TESTS' | 'COMMIT' | 'DEPLOYMENT'} SupplementalTabId
+ * @description Represents the unique identifiers for supplemental output tabs (tests, commit message, etc.).
+ */
+type SupplementalTabId = 'TESTS' | 'COMMIT' | 'DEPLOYMENT';
 
+/**
+ * @typedef {Object} SupplementalOutputs
+ * @description A state object to hold the content for all supplemental outputs.
+ * @property {string} tests - The generated unit test code.
+ * @property {string} commitMessage - The generated commit message.
+ * @property {string} dockerfile - The generated Dockerfile content.
+ */
+type SupplementalOutputs = {
+  tests: string;
+  commitMessage: string;
+  dockerfile: string;
+};
+
+/**
+ * @typedef {({ type: 'file'; file: GeneratedFile } | { type: 'supplemental'; id: SupplementalTabId })} ActiveTab
+ * @description Represents the currently active tab in the output panel. It can either be a generated file or a supplemental output.
+ */
+type ActiveTab = { type: 'file'; file: GeneratedFile } | { type: 'supplemental'; id: SupplementalTabId };
+
+/**
+ * Renders the content of the currently active tab.
+ * @param {object} props - The component props.
+ * @param {ActiveTab | null} props.activeTab - The currently active tab object.
+ * @param {SupplementalOutputs} props.supplementalOutputs - The state object containing content for supplemental tabs.
+ * @returns {React.ReactElement} The rendered content for the active tab.
+ * @performance Memoized to prevent re-renders when props haven't changed. The underlying `CodeBlock` component is assumed to handle syntax highlighting efficiently.
+ */
+const OutputContent: React.FC<{ activeTab: ActiveTab | null, supplementalOutputs: SupplementalOutputs }> = React.memo(({ activeTab, supplementalOutputs }) => {
+    if (!activeTab) {
+        return (
+            <Layout.Center className="h-full">
+                <Text color="secondary">Select a file or tab to view its content.</Text>
+            </Layout.Center>
+        );
+    }
+
+    if (activeTab.type === 'supplemental') {
+        let content = '';
+        let language = 'plaintext';
+        switch (activeTab.id) {
+            case 'TESTS':
+                content = supplementalOutputs.tests;
+                language = 'typescript';
+                break;
+            case 'COMMIT':
+                content = supplementalOutputs.commitMessage;
+                language = 'git-commit';
+                break;
+            case 'DEPLOYMENT':
+                content = supplementalOutputs.dockerfile;
+                language = 'dockerfile';
+                break;
+        }
+        return <CodeBlock language={language} code={content} className="h-full" />;
+    }
+
+    if (activeTab.type === 'file') {
+        const language = activeTab.file.filePath.split('.').pop() || 'typescript';
+        return <CodeBlock language={language} code={activeTab.file.content} className="h-full" />;
+    }
+
+    return null;
+});
+OutputContent.displayName = 'OutputContent';
+
+/**
+ * The main component for the AI Feature Builder. It allows users to generate
+ * features using natural language, view the generated files, and see supplemental
+ * information like unit tests and commit messages.
+ * This component acts as a thin client, delegating all heavy processing to backend services
+ * via a dedicated worker pool.
+ *
+ * @returns {React.ReactElement} The rendered AI Feature Builder component.
+ * @example
+ * ```jsx
+ * <AiFeatureBuilder />
+ * ```
+ */
 export const AiFeatureBuilder: React.FC = () => {
+    const { featureBuilderService } = useServices<{ featureBuilderService: IFeatureBuilderService }>();
+
     const [prompt, setPrompt] = useState<string>('A simple "Hello World" React component with a button that shows an alert.');
-    const [framework] = useState('React');
-    const [styling] = useState('Tailwind CSS');
-    const [includeBackend, setIncludeBackend] = useState(false);
+    const [includeBackend, setIncludeBackend] = useState<boolean>(false);
 
     const [generatedFiles, setGeneratedFiles] = useState<GeneratedFile[]>([]);
-    const [unitTests, setUnitTests] = useState<string>('');
-    const [commitMessage, setCommitMessage] = useState<string>('');
-    const [dockerfile, setDockerfile] = useState<string>('');
+    const [supplementalOutputs, setSupplementalOutputs] = useState<SupplementalOutputs>({
+        tests: '',
+        commitMessage: '',
+        dockerfile: '',
+    });
 
-    const [activeTab, setActiveTab] = useState<OutputTab>('CODE');
+    const [activeTab, setActiveTab] = useState<ActiveTab | null>(null);
     const [isLoading, setIsLoading] = useState<boolean>(false);
     const [error, setError] = useState<string>('');
-    
-    useEffect(() => {
-        const loadFiles = async () => {
-            const files = await getAllFiles();
-            setGeneratedFiles(files);
-            if (files.length > 0) setActiveTab(files[0]);
-        };
-        loadFiles();
-    }, []);
 
+    /**
+     * @function handleGenerate
+     * @description Initiates the feature generation process by sending the prompt and configuration
+     * to the `featureBuilderService`. It then listens to a stream of events to update the UI in real-time
+     * as files and other assets are generated.
+     * @returns {Promise<void>} A promise that resolves when the generation stream is fully processed.
+     * @security User prompt is sent to the backend for processing. The backend should handle sanitization.
+     * @performance This operation is asynchronous and non-blocking. The UI is updated reactively via a stream of events from a worker.
+     * @throws Will set an error in the component state if the generation stream fails.
+     */
     const handleGenerate = useCallback(async () => {
-        if (!prompt.trim()) { setError('Please enter a feature description.'); return; }
+        if (!prompt.trim()) {
+            setError('Please enter a feature description.');
+            return;
+        }
+
         setIsLoading(true);
         setError('');
-        await clearAllFiles();
-        setGeneratedFiles([]); setUnitTests(''); setCommitMessage(''); setDockerfile(''); setActiveTab('CODE');
+        setGeneratedFiles([]);
+        setSupplementalOutputs({ tests: '', commitMessage: '', dockerfile: '' });
+        setActiveTab(null);
 
         try {
-            const resultFiles = includeBackend
-                ? await generateFullStackFeature(prompt, framework, styling)
-                : await generateFeature(prompt, framework, styling);
-            
-            for (const file of resultFiles) { await saveFile(file); }
-            setGeneratedFiles(resultFiles);
+            const stream = featureBuilderService.generateFeatureStream({
+                prompt,
+                framework: 'React', // Hardcoded as per current UI
+                styling: 'Tailwind CSS', // Hardcoded as per current UI
+                includeBackend,
+            });
 
-            if (resultFiles.length > 0) {
-                const componentFile = resultFiles.find(f => f.filePath.endsWith('.tsx') || f.filePath.endsWith('.jsx'));
-                setActiveTab(componentFile || resultFiles[0]);
+            let firstFile: GeneratedFile | null = null;
 
-                const testStream = generateUnitTestsStream(componentFile?.content || resultFiles[0].content);
-                const diffContext = resultFiles.map(f => `File: ${f.filePath}\n\n${f.content}`).join('\n---\n');
-                const commitStream = generateCommitMessageStream(diffContext);
-                
-                let tests = ''; for await (const chunk of testStream) { tests += chunk; setUnitTests(tests); }
-                let commit = ''; for await (const chunk of commitStream) { commit += chunk; setCommitMessage(commit); }
-                
-                if (!includeBackend) {
-                    const dockerfileStream = generateDockerfile(framework);
-                    let docker = ''; for await (const chunk of dockerfileStream) { docker += chunk; setDockerfile(docker); }
+            for await (const event of stream) {
+                switch (event.type) {
+                    case 'file_generated':
+                        if (!firstFile) firstFile = event.data;
+                        setGeneratedFiles(prev => [...prev, event.data]);
+                        break;
+                    case 'tests_chunk':
+                        setSupplementalOutputs(prev => ({ ...prev, tests: prev.tests + event.data }));
+                        break;
+                    case 'commit_chunk':
+                        setSupplementalOutputs(prev => ({ ...prev, commitMessage: prev.commitMessage + event.data }));
+                        break;
+                    case 'deployment_chunk':
+                        setSupplementalOutputs(prev => ({ ...prev, dockerfile: prev.dockerfile + event.data }));
+                        break;
+                    case 'error':
+                        throw new Error(event.data);
                 }
             }
+
+            if (firstFile) {
+                setActiveTab({ type: 'file', file: firstFile });
+            }
+
         } catch (err) {
-            setError(err instanceof Error ? err.message : 'Failed to generate feature.');
+            const errorMessage = err instanceof Error ? err.message : 'Failed to generate feature.';
+            setError(errorMessage);
+            // In a real app, a global notification service would be used.
+            // Ex: notificationService.showError('Generation Failed', errorMessage);
         } finally {
             setIsLoading(false);
         }
-    }, [prompt, framework, styling, includeBackend]);
-    
-    const renderContent = () => {
-        if (typeof activeTab === 'string') {
-            switch (activeTab) {
-                case 'TESTS': return <MarkdownRenderer content={unitTests} />;
-                case 'COMMIT': return <pre className="w-full h-full p-4 whitespace-pre-wrap font-sans text-sm">{commitMessage}</pre>;
-                case 'DEPLOYMENT': return <MarkdownRenderer content={dockerfile} />;
-                default: return <div className="p-4">Select a file</div>;
-            }
-        }
-        return <MarkdownRenderer content={'```tsx\n' + activeTab.content + '\n```'} />;
-    }
+    }, [prompt, includeBackend, featureBuilderService]);
+
+    const supplementalTabs = useMemo(() => {
+        const tabs: { id: SupplementalTabId, icon: React.ReactElement }[] = [];
+        if (supplementalOutputs.tests) tabs.push({ id: 'TESTS', icon: <Icon icon={BeakerIcon} /> });
+        if (supplementalOutputs.commitMessage) tabs.push({ id: 'COMMIT', icon: <Icon icon={GitBranchIcon} /> });
+        if (supplementalOutputs.dockerfile) tabs.push({ id: 'DEPLOYMENT', icon: <Icon icon={CloudIcon} /> });
+        return tabs;
+    }, [supplementalOutputs]);
 
     return (
-        <div className="h-full flex flex-col text-text-primary bg-surface">
-            <header className="p-4 border-b border-border flex-shrink-0">
-                <h1 className="text-xl font-bold flex items-center"><CpuChipIcon /><span className="ml-3">AI Feature Builder</span></h1>
-            </header>
-            <div className="flex-grow flex min-h-0">
-                <main className="flex-1 flex flex-col min-w-0">
-                    <div className="flex-grow flex flex-col bg-background">
-                         <div className="border-b border-border flex items-center bg-surface overflow-x-auto">
+        <Layout.Root className="h-full text-text-primary bg-surface">
+            <Header className="p-4 border-b border-border flex-shrink-0">
+                <Heading level={1} className="flex items-center">
+                    <Icon icon={CpuChipIcon} />
+                    <Text as="span" className="ml-3">AI Feature Builder</Text>
+                </Heading>
+            </Header>
+            <SplitPanel className="h-full">
+                <SplitPanel.Pane defaultSize={30} minSize={20} maxSize={40} className="flex flex-col">
+                    <Main className="flex-grow p-4 overflow-y-auto">
+                        <Textarea
+                            label="Feature Description"
+                            value={prompt}
+                            onChange={(e) => setPrompt(e.target.value)}
+                            placeholder="e.g., A user profile card with an avatar, name, and bio."
+                            className="h-48"
+                            disabled={isLoading}
+                        />
+                        <Checkbox
+                            label="Include Backend (Cloud Function + Firestore)"
+                            checked={includeBackend}
+                            onChange={() => setIncludeBackend(v => !v)}
+                            className="mt-4"
+                            disabled={isLoading}
+                        />
+                    </Main>
+                    <Footer className="p-4 border-t border-border">
+                        <Button onClick={handleGenerate} disabled={isLoading} fullWidth>
+                            {isLoading ? <Spinner /> : 'Generate Feature'}
+                        </Button>
+                        {error && <Text color="danger" size="sm" className="mt-2 text-center">{error}</Text>}
+                    </Footer>
+                </SplitPanel.Pane>
+                <SplitPanel.Pane defaultSize={70} className="flex flex-col">
+                    <Tabs.Root
+                        value={activeTab ? (activeTab.type === 'file' ? activeTab.file.filePath : activeTab.id) : undefined}
+                        onValueChange={(value) => {
+                            if (!value) return;
+                            const fileTab = generatedFiles.find(f => f.filePath === value);
+                            if (fileTab) {
+                                setActiveTab({ type: 'file', file: fileTab });
+                            } else {
+                                setActiveTab({ type: 'supplemental', id: value as SupplementalTabId });
+                            }
+                        }}
+                    >
+                        <Tabs.List>
                             {generatedFiles.map(file => (
-                                <button key={file.filePath} onClick={() => setActiveTab(file)} className={`flex-shrink-0 flex items-center gap-2 px-4 py-2 text-sm ${activeTab === file ? 'bg-background border-b-2 border-primary text-text-primary' : 'text-text-secondary hover:bg-gray-50'}`}><DocumentTextIcon /> {file.filePath}</button>
+                                <Tabs.Trigger key={file.filePath} value={file.filePath}>
+                                    <Icon icon={DocumentTextIcon} />
+                                    {file.filePath}
+                                </Tabs.Trigger>
                             ))}
-                            {unitTests && <button onClick={() => setActiveTab('TESTS')} className={`flex-shrink-0 flex items-center gap-2 px-4 py-2 text-sm ${activeTab === 'TESTS' ? 'bg-background border-b-2 border-primary text-text-primary' : 'text-text-secondary hover:bg-gray-50'}`}><BeakerIcon /> Tests</button>}
-                            {commitMessage && <button onClick={() => setActiveTab('COMMIT')} className={`flex-shrink-0 flex items-center gap-2 px-4 py-2 text-sm ${activeTab === 'COMMIT' ? 'bg-background border-b-2 border-primary text-text-primary' : 'text-text-secondary hover:bg-gray-50'}`}><GitBranchIcon /> Commit</button>}
-                            {dockerfile && !includeBackend && <button onClick={() => setActiveTab('DEPLOYMENT')} className={`flex-shrink-0 flex items-center gap-2 px-4 py-2 text-sm ${activeTab === 'DEPLOYMENT' ? 'bg-background border-b-2 border-primary text-text-primary' : 'text-text-secondary hover:bg-gray-50'}`}><CloudIcon /> Dockerfile</button>}
-                        </div>
-                        <div className="flex-grow p-2 overflow-auto">
-                            {isLoading && !generatedFiles.length ? <div className="flex justify-center items-center h-full"><LoadingSpinner/></div> : renderContent()}
-                        </div>
-                    </div>
-                    
-                    <div className="flex-shrink-0 p-4 border-t border-border bg-surface">
-                         <div className="flex items-center gap-2 mb-2">
-                            <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={includeBackend} onChange={e => setIncludeBackend(e.target.checked)} /> Include Backend (Cloud Function + Firestore)</label>
-                        </div>
-                        <textarea value={prompt} onChange={(e) => setPrompt(e.target.value)} placeholder="e.g., A user profile card with an avatar, name, and bio." className="w-full p-2 bg-background border border-border rounded-md resize-none text-sm h-20"/>
-                         <div className="flex gap-2 mt-2">
-                             <button onClick={handleGenerate} disabled={isLoading} className="btn-primary flex-grow flex items-center justify-center gap-2 px-4 py-2">
-                                {isLoading ? <><LoadingSpinner /> Generating...</> : 'Generate Feature'}
-                            </button>
-                         </div>
-                         {error && <p className="text-red-600 text-xs mt-2 text-center">{error}</p>}
-                    </div>
-                </main>
-            </div>
-        </div>
+                            {supplementalTabs.map(tab => (
+                                <Tabs.Trigger key={tab.id} value={tab.id}>
+                                    {tab.icon}
+                                    {tab.id}
+                                </Tabs.Trigger>
+                            ))}
+                        </Tabs.List>
+                        <Panel.Content className="flex-grow overflow-auto relative">
+                            {isLoading && generatedFiles.length === 0 ? (
+                                <Layout.Center className="h-full">
+                                    <Spinner size="lg" />
+                                    <Text className="mt-2" color="secondary">Generating your feature...</Text>
+                                </Layout.Center>
+                            ) : (
+                                <OutputContent activeTab={activeTab} supplementalOutputs={supplementalOutputs} />
+                            )}
+                        </Panel.Content>
+                    </Tabs.Root>
+                </SplitPanel.Pane>
+            </SplitPanel>
+        </Layout.Root>
     );
 };

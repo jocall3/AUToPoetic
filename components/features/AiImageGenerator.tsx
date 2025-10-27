@@ -1,13 +1,41 @@
-// Copyright James Burvel O’Callaghan III
-// President Citibank Demo Business Inc.
+/**
+ * @file AiImageGenerator.tsx
+ * @module AiImageGenerator
+ * @description A feature component for generating images from textual prompts, optionally guided by a source image.
+ * This component has been refactored to align with the new micro-frontend and service-oriented architecture.
+ * It offloads heavy client-side processing to a dedicated web worker pool and communicates with the AI
+ * backend via an authenticated GraphQL mutation, adhering to a zero-trust security model.
+ * @version 2.0.0
+ * @author Elite AI Implementation Team
+ * @see {@link useGenerateImageMutation} for the GraphQL mutation hook.
+ * @see {@link useWorkerPool} for the web worker management hook.
+ * @security This component makes authenticated requests to the BFF. All user-provided text and image data is sent to the backend for processing by the AI model. The client itself holds no long-lived secrets.
+ * @performance Image processing (blob to base64 conversion) is offloaded to a web worker to prevent blocking the main thread. The generated image URL is loaded directly, and performance depends on the AI service and network conditions.
+ */
 
-import React, { useState, useCallback, useRef } from 'react';
-import { generateImage, generateImageFromImageAndText } from '../../services/aiService.ts';
-import { fileToBase64, blobToDataURL } from '../../services/fileUtils.ts';
-import { ImageGeneratorIcon, SparklesIcon, ArrowDownTrayIcon, XMarkIcon } from '../icons.tsx';
-import { LoadingSpinner } from '../shared/index.tsx';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 
-const surprisePrompts = [
+// --- Core Service & GraphQL Hooks ---
+import { useGenerateImageMutation } from '@/graphql/hooks/useGenerateImageMutation';
+import { useWorkerPool } from '@/services/WorkerPoolManager';
+import { useNotification } from '@/contexts/NotificationContext';
+import { downloadService } from '@/services/infrastructure/DownloadService';
+
+// --- UI Framework Components ---
+import * as ui from '@/ui/core';
+import * as layout from '@/ui/layout';
+import { ImageUploadArea } from '@/ui/composite/ImageUploadArea';
+import { ImagePreview } from '@/ui/composite/ImagePreview';
+import { ImageGeneratorIcon, SparklesIcon } from '@/ui/icons';
+
+// --- Type Definitions ---
+import type { WorkerTaskResponse } from '@/types';
+
+/**
+ * A list of sample prompts to inspire the user.
+ * @constant {string[]}
+ */
+const surprisePrompts: string[] = [
     'A majestic lion wearing a crown, painted in the style of Van Gogh.',
     'A futuristic cityscape on another planet with two moons in the sky.',
     'A cozy, magical library inside a giant tree.',
@@ -15,181 +43,184 @@ const surprisePrompts = [
     'An astronaut riding a space-themed bicycle on the moon.',
 ];
 
+/**
+ * @interface UploadedImage
+ * @description Represents the state of an uploaded image, containing both its base64 representation for the API and a data URL for client-side preview.
+ * @property {string} base64 - The base64 encoded string of the image data.
+ * @property {string} dataUrl - The data URL (`data:mime/type;base64,...`) for rendering the image in an `<img>` tag.
+ * @property {string} mimeType - The MIME type of the uploaded image (e.g., 'image/png').
+ */
 interface UploadedImage {
     base64: string;
     dataUrl: string;
     mimeType: string;
 }
 
+/**
+ * A React functional component that provides a UI for generating AI images.
+ * Users can input a text prompt and optionally upload an image to guide the generation process.
+ * The component utilizes a GraphQL mutation for AI interaction and a web worker for image processing.
+ * @component
+ * @example
+ * return <AiImageGenerator />
+ */
 export const AiImageGenerator: React.FC = () => {
     const [prompt, setPrompt] = useState<string>('A photorealistic image of a futuristic city at sunset, with flying cars.');
     const [uploadedImage, setUploadedImage] = useState<UploadedImage | null>(null);
-    const [generatedImageUrl, setGeneratedImageUrl] = useState<string | null>(null);
-    const [isLoading, setIsLoading] = useState<boolean>(false);
-    const [error, setError] = useState<string>('');
-    const fileInputRef = useRef<HTMLInputElement>(null);
 
-    const handleGenerate = useCallback(async () => {
+    const { postTask, subscribe, unsubscribe } = useWorkerPool();
+    const { addNotification } = useNotification();
+    const [generateImage, { data: generatedImageData, loading: isGenerating, error: generationError }] = useGenerateImageMutation();
+
+    const imageProcessingTaskId = useRef<string | null>(null);
+
+    /**
+     * @description Effect to handle responses from the web worker pool for image processing tasks.
+     * @performance Subscribes and unsubscribes to worker messages, preventing memory leaks and unnecessary processing.
+     */
+    useEffect(() => {
+        const handleWorkerMessage = (response: WorkerTaskResponse) => {
+            if (response.taskId === imageProcessingTaskId.current) {
+                if (response.status === 'success') {
+                    setUploadedImage(response.payload as UploadedImage);
+                    addNotification('Image processed successfully.', 'success');
+                } else {
+                    addNotification(`Image processing failed: ${response.error}`, 'error');
+                }
+                imageProcessingTaskId.current = null; // Clear task ID after completion
+            }
+        };
+
+        const subscriptionId = subscribe(handleWorkerMessage);
+        return () => unsubscribe(subscriptionId);
+    }, [subscribe, unsubscribe, addNotification]);
+
+    /**
+     * @function handleGenerate
+     * @description Initiates the AI image generation process by calling the GraphQL mutation.
+     * @security The prompt and image data are sent to the secure BFF endpoint.
+     * @performance Asynchronous operation; loading state is managed by the mutation hook.
+     * @returns {void}
+     */
+    const handleGenerate = useCallback((): void => {
         if (!prompt.trim()) {
-            setError('Please enter a prompt to generate an image.');
+            addNotification('Please enter a prompt to generate an image.', 'error');
             return;
         }
-        setIsLoading(true);
-        setError('');
-        setGeneratedImageUrl(null);
-        try {
-            let resultUrl: string;
-            if (uploadedImage) {
-                resultUrl = await generateImageFromImageAndText(prompt, uploadedImage.base64, uploadedImage.mimeType);
-            } else {
-                resultUrl = await generateImage(prompt);
-            }
-            setGeneratedImageUrl(resultUrl);
-        } catch (err) {
-            const errorMessage = err instanceof Error ? err.message : 'An unknown error occurred.';
-            setError(`Failed to generate image: ${errorMessage}`);
-        } finally {
-            setIsLoading(false);
-        }
-    }, [prompt, uploadedImage]);
 
-    const handleSurpriseMe = () => {
+        addNotification('Starting image generation...', 'info');
+        generateImage({
+            variables: {
+                prompt,
+                base64Image: uploadedImage?.base64,
+                mimeType: uploadedImage?.mimeType,
+            },
+        });
+    }, [prompt, uploadedImage, generateImage, addNotification]);
+
+    /**
+     * @function handleImageUpload
+     * @description Offloads the processing of an uploaded image file to a web worker.
+     * @param {File} file - The image file selected by the user.
+     * @performance By using a web worker, we prevent the main thread from being blocked while converting the file to base64 and a data URL.
+     * @returns {void}
+     */
+    const handleImageUpload = useCallback((file: File): void => {
+        if (imageProcessingTaskId.current) {
+            addNotification('Another image is already being processed.', 'info');
+            return;
+        }
+        const taskId = postTask('PROCESS_IMAGE_BLOB', { blob: file });
+        imageProcessingTaskId.current = taskId;
+        addNotification('Processing uploaded image...', 'info');
+    }, [postTask, addNotification]);
+
+    /**
+     * @function handleDownload
+     * @description Triggers the download of the generated image using the download service.
+     * @returns {void}
+     */
+    const handleDownload = useCallback((): void => {
+        const url = generatedImageData?.generateImage?.url;
+        if (url) {
+            const filename = `${prompt.slice(0, 40).replace(/\s/g, '_') || 'ai-generated-image'}.png`;
+            downloadService.downloadUrl(url, filename);
+            addNotification('Download started.', 'success');
+        } else {
+            addNotification('No image to download.', 'error');
+        }
+    }, [generatedImageData, prompt, addNotification]);
+
+    /**
+     * @function handleSurpriseMe
+     * @description Sets the prompt to a random example from the predefined list.
+     * @returns {void}
+     */
+    const handleSurpriseMe = (): void => {
         const randomPrompt = surprisePrompts[Math.floor(Math.random() * surprisePrompts.length)];
         setPrompt(randomPrompt);
     };
 
-    const processImageBlob = async (blob: Blob) => {
-        try {
-            const [dataUrl, base64] = await Promise.all([
-                blobToDataURL(blob),
-                fileToBase64(blob as File)
-            ]);
-            setUploadedImage({ dataUrl, base64, mimeType: blob.type });
-        } catch (e) {
-            setError('Could not process the image.');
-        }
+    /**
+     * @function handleClearImage
+     * @description Clears the currently uploaded inspiration image.
+     * @returns {void}
+     */
+    const handleClearImage = (): void => {
+        setUploadedImage(null);
     };
-
-    const handlePaste = useCallback(async (event: React.ClipboardEvent) => {
-        const items = event.clipboardData.items;
-        for (const item of items) {
-            if (item.type.indexOf('image') !== -1) {
-                const blob = item.getAsFile();
-                if (blob) {
-                    await processImageBlob(blob);
-                    return;
-                }
-            }
-        }
-    }, []);
-
-    const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
-        const file = event.target.files?.[0];
-        if (file) {
-            await processImageBlob(file);
-        }
-    };
-    
-    const handleDownload = () => {
-        if (!generatedImageUrl) return;
-        const link = document.createElement('a');
-        link.href = generatedImageUrl;
-        link.download = `${prompt.slice(0, 30).replace(/\s/g, '_')}.png`;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-    }
 
     return (
-        <div className="h-full flex flex-col p-4 sm:p-6 lg:p-8 text-text-primary">
-            <header className="mb-6">
-                <h1 className="text-3xl font-bold flex items-center">
-                    <ImageGeneratorIcon />
-                    <span className="ml-3">AI Image Generator</span>
-                </h1>
-                <p className="text-text-secondary mt-1">Generate images from text, or provide an image for inspiration.</p>
-            </header>
-            
-            <div className="flex-grow grid grid-cols-1 lg:grid-cols-2 gap-6 min-h-0">
-                {/* Left Column: Inputs */}
-                <div className="flex flex-col gap-4">
-                    <div>
-                        <label htmlFor="prompt-input" className="text-sm font-medium text-text-secondary">Your Prompt</label>
-                        <textarea
-                            id="prompt-input"
-                            value={prompt}
-                            onChange={(e) => setPrompt(e.target.value)}
-                            placeholder="e.g., A cute cat wearing a wizard hat"
-                            className="w-full p-3 mt-1 rounded-md bg-surface border border-border focus:ring-2 focus:ring-primary focus:outline-none resize-y"
-                            rows={3}
+        <layout.Pane>
+            <layout.Header
+                icon={<ImageGeneratorIcon />}
+                title="AI Image Generator"
+                description="Generate images from text, or provide an image for inspiration."
+            />
+            <layout.Grid columns={2} gap="large" className="h-full">
+                <layout.GridItem className="flex flex-col">
+                    <ui.Card className="flex flex-col gap-4 h-full">
+                        <ui.FormControl>
+                            <ui.Label htmlFor="prompt-input">Your Prompt</ui.Label>
+                            <ui.TextArea
+                                id="prompt-input"
+                                value={prompt}
+                                onChange={(e) => setPrompt(e.target.value)}
+                                placeholder="e.g., A cute cat wearing a wizard hat"
+                                rows={4}
+                            />
+                        </ui.FormControl>
+                        
+                        <ImageUploadArea 
+                            onUpload={handleImageUpload} 
+                            onClear={handleClearImage}
+                            uploadedImageUrl={uploadedImage?.dataUrl}
+                            label="Inspiration Image (Optional)"
+                            isProcessing={!!imageProcessingTaskId.current}
                         />
-                    </div>
-                    
-                    <div className="flex flex-col flex-grow min-h-[200px]">
-                         <label className="text-sm font-medium text-text-secondary mb-1">Inspiration Image (Optional)</label>
-                         <div onPaste={handlePaste} className="relative flex-grow flex flex-col items-center justify-center bg-surface p-4 rounded-lg border-2 border-dashed border-border focus:outline-none focus:border-primary" tabIndex={0}>
-                            {uploadedImage ? (
-                                <>
-                                    <img src={uploadedImage.dataUrl} alt="Uploaded content" className="max-w-full max-h-full object-contain rounded-md shadow-lg" />
-                                    <button onClick={() => setUploadedImage(null)} className="absolute top-2 right-2 p-1 bg-black/30 text-white rounded-full hover:bg-black/50"><XMarkIcon /></button>
-                                </>
-                            ) : (
-                                <div className="text-center text-text-secondary">
-                                    <h2 className="text-lg font-bold text-text-primary">Paste an image here</h2>
-                                    <p className="text-sm">(Cmd/Ctrl + V)</p>
-                                    <p className="text-xs my-1">or</p>
-                                    <button onClick={() => fileInputRef.current?.click()} className="text-sm font-semibold text-primary hover:underline">Upload File</button>
-                                    <input type="file" ref={fileInputRef} onChange={handleFileChange} accept="image/*" className="hidden"/>
-                                </div>
-                            )}
-                         </div>
-                    </div>
-                    
-                    <div className="flex gap-2">
-                        <button
-                            onClick={handleGenerate}
-                            disabled={isLoading}
-                            className="btn-primary w-full flex items-center justify-center px-6 py-3"
-                        >
-                            {isLoading ? <LoadingSpinner /> : 'Generate Image'}
-                        </button>
-                        <button
-                            onClick={handleSurpriseMe}
-                            disabled={isLoading}
-                            className="px-4 py-3 bg-surface border border-border rounded-md hover:bg-gray-100 transition-colors"
-                            title="Surprise Me!"
-                        >
-                            <SparklesIcon />
-                        </button>
-                    </div>
-                </div>
+                        
+                        <layout.FlexContainer gap="medium" className="mt-auto">
+                             <ui.Button onClick={handleGenerate} loading={isGenerating} fullWidth>Generate Image</ui.Button>
+                             <ui.Button variant="secondary" onClick={handleSurpriseMe} disabled={isGenerating} aria-label="Surprise Me">
+                                <SparklesIcon />
+                             </ui.Button>
+                        </layout.FlexContainer>
+                    </ui.Card>
+                </layout.GridItem>
 
-                {/* Right Column: Output */}
-                <div className="flex flex-col h-full">
-                    <label className="text-sm font-medium text-text-secondary mb-2">Generated Image</label>
-                    <div className="flex-grow flex items-center justify-center bg-background border-2 border-dashed border-border rounded-lg p-4 relative overflow-auto">
-                        {isLoading && <LoadingSpinner />}
-                        {error && <p className="text-red-500 text-center">{error}</p>}
-                        {generatedImageUrl && !isLoading && (
-                            <>
-                                <img src={generatedImageUrl} alt={prompt || "Generated by AI"} className="max-w-full max-h-full object-contain rounded-md shadow-lg" />
-                                <button 
-                                  onClick={handleDownload}
-                                  className="absolute top-4 right-4 p-2 bg-black/30 text-white rounded-full hover:bg-black/50 backdrop-blur-sm"
-                                  title="Download Image"
-                                >
-                                    <ArrowDownTrayIcon />
-                                </button>
-                            </>
-                        )}
-                        {!isLoading && !generatedImageUrl && !error && (
-                            <div className="text-center text-text-secondary">
-                                <p>Your generated image will appear here.</p>
-                            </div>
-                        )}
-                    </div>
-                </div>
-            </div>
-        </div>
+                <layout.GridItem className="flex flex-col">
+                     <ui.Card className="h-full flex flex-col">
+                        <ui.Label>Generated Image</ui.Label>
+                        <ImagePreview
+                            src={generatedImageData?.generateImage?.url}
+                            alt={prompt}
+                            isLoading={isGenerating}
+                            error={generationError?.message}
+                            onDownload={handleDownload}
+                        />
+                     </ui.Card>
+                </layout.GridItem>
+            </layout.Grid>
+        </layout.Pane>
     );
 };

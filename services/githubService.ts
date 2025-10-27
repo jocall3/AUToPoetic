@@ -1,159 +1,209 @@
-// Copyright James Burvel O’Callaghan III
-// President Citibank Demo Business Inc.
+/**
+ * @file This module provides an adapter for interacting with the GitHub-related
+ * functionalities of the Backend-for-Frontend (BFF) service. It abstracts away
+ * the direct GraphQL communication for GitHub operations, adhering to the new
+ * zero-trust, microservice-oriented architecture.
+ * @module services/githubService
+ * @see module:services/bffService for the underlying API client.
+ * @security All GitHub API interactions are proxied through the BFF. The client application
+ * never handles GitHub personal access tokens or other secrets.
+ */
 
-import type { Octokit } from 'octokit';
-import type { Repo, FileNode } from '../types.ts';
-import { logEvent, logError, measurePerformance } from './telemetryService.ts';
+import { injectable, inject } from 'inversify';
+import 'reflect-metadata';
+import type { Repo, FileNode } from '../types';
+import { IBffApiClient } from './bffService'; // Assumed to exist in the new architecture
+import { SERVICE_IDENTIFIERS } from './serviceIdentifiers'; // Assumed to exist for DI
 
-export const getRepos = async (octokit: Octokit): Promise<Repo[]> => {
-    return measurePerformance('getRepos', async () => {
-        logEvent('getRepos_start');
-        try {
-            const { data } = await octokit.request('GET /user/repos', { type: 'owner', sort: 'updated', per_page: 100 });
-            logEvent('getRepos_success', { count: data.length });
-            return data as Repo[];
-        } catch (error) {
-            logError(error as Error, { context: 'getRepos' });
-            throw new Error(`Failed to fetch repositories: ${(error as Error).message}`);
+/**
+ * @interface IGitHubService
+ * @description Defines the contract for interacting with GitHub data via the BFF.
+ * This represents the abstraction in the Core service layer, ensuring that business logic
+ * is decoupled from the specific implementation of data fetching (GraphQL).
+ * @security This service communicates with the BFF using a short-lived JWT for user
+ * authentication. The BFF then orchestrates calls to the GitHubProxyService,
+ * which securely retrieves the necessary third-party tokens from the AuthGateway.
+ */
+export interface IGitHubService {
+  /**
+   * Fetches the repositories for the currently authenticated user.
+   * @returns {Promise<Repo[]>} A promise that resolves to an array of repository objects.
+   * @throws {Error} If the GraphQL request to the BFF fails or returns an error.
+   * @example const repos = await githubService.getRepos();
+   */
+  getRepos(): Promise<Repo[]>;
+
+  /**
+   * Fetches the hierarchical file tree for a specific repository.
+   * @param {string} owner - The owner of the repository.
+   * @param {string} repo - The name of the repository.
+   * @returns {Promise<FileNode>} A promise that resolves to the root FileNode of the repository tree.
+   * @throws {Error} If the GraphQL request to the BFF fails or returns an error.
+   * @example const tree = await githubService.getRepoTree('my-org', 'my-repo');
+   */
+  getRepoTree(owner: string, repo: string): Promise<FileNode>;
+
+  /**
+   * Fetches the content of a specific file from a repository.
+   * @param {string} owner - The owner of the repository.
+   * @param {string} repo - The name of the repository.
+   * @param {string} path - The path to the file within the repository.
+   * @returns {Promise<string>} A promise that resolves to the string content of the file.
+   * @throws {Error} If the GraphQL request to the BFF fails or returns an error.
+   * @example const content = await githubService.getFileContent('my-org', 'my-repo', 'src/index.ts');
+   */
+  getFileContent(owner: string, repo: string, path: string): Promise<string>;
+
+  /**
+   * Commits one or more file changes to a branch in a repository.
+   * @param {string} owner - The owner of the repository.
+   * @param {string} repo - The name of the repository.
+   * @param {Array<{ path: string; content: string }>} files - An array of file objects to commit.
+   * @param {string} message - The commit message.
+   * @param {string} [branch='main'] - The branch to commit to. Defaults to 'main'.
+   * @returns {Promise<string>} A promise that resolves to the URL of the new commit.
+   * @throws {Error} If the GraphQL mutation to the BFF fails or returns an error.
+   * @example
+   * await githubService.commitFiles(
+   *   'my-org',
+   *   'my-repo',
+   *   [{ path: 'README.md', content: 'New content' }],
+   *   'feat: Update README'
+   * );
+   */
+  commitFiles(
+    owner: string,
+    repo: string,
+    files: { path: string; content: string }[],
+    message: string,
+    branch?: string
+  ): Promise<string>;
+}
+
+/**
+ * @class GitHubAdapter
+ * @implements {IGitHubService}
+ * @description Implements the IGitHubService interface by making GraphQL requests to the BFF.
+ * This class is part of the Infrastructure layer and is managed by a DI container.
+ * @injectable
+ * @performance This adapter's performance is dependent on the network latency to the BFF
+ * and the performance of the BFF and downstream microservices (GitHubProxyService, AuthGateway).
+ */
+@injectable()
+export class GitHubAdapter implements IGitHubService {
+  private readonly bffClient: IBffApiClient;
+
+  /**
+   * @constructor
+   * @param {IBffApiClient} bffClient - The injected BFF API client for making GraphQL requests.
+   */
+  public constructor(
+    @inject(SERVICE_IDENTIFIERS.BffApiClient) bffClient: IBffApiClient
+  ) {
+    this.bffClient = bffClient;
+  }
+
+  /**
+   * @inheritdoc
+   */
+  public async getRepos(): Promise<Repo[]> {
+    const query = `
+      query GetUserRepos {
+        github {
+          repos {
+            id
+            name
+            full_name
+            private
+            html_url
+            description
+          }
         }
-    });
-};
+      }
+    `;
 
-export const deleteRepo = async (octokit: Octokit, owner: string, repo: string): Promise<void> => {
-     return measurePerformance('deleteRepo', async () => {
-        logEvent('deleteRepo_start', { owner, repo });
-        try {
-            await octokit.request('DELETE /repos/{owner}/{repo}', { owner, repo });
-            logEvent('deleteRepo_success', { owner, repo });
-        } catch (error) {
-            logError(error as Error, { context: 'deleteRepo', owner, repo });
-            throw new Error(`Failed to delete repository: ${(error as Error).message}`);
+    const response = await this.bffClient.query<{ github: { repos: Repo[] } }>(query);
+    return response.github.repos;
+  }
+
+  /**
+   * @inheritdoc
+   */
+  public async getRepoTree(owner: string, repo: string): Promise<FileNode> {
+    const query = `
+      query GetRepoTree($owner: String!, $repo: String!) {
+        github {
+          repoTree(owner: $owner, repo: $repo) {
+            name
+            path
+            type
+            children {
+              name
+              path
+              type
+              children {
+                name
+                path
+                type
+                children {
+                  name
+                  path
+                  type
+                }
+              }
+            }
+          }
         }
-    });
-};
+      }
+    `;
 
-export const getRepoTree = async (octokit: Octokit, owner: string, repo: string): Promise<FileNode> => {
-     return measurePerformance('getRepoTree', async () => {
-        logEvent('getRepoTree_start', { owner, repo });
-        try {
-            const { data: repoData } = await octokit.request('GET /repos/{owner}/{repo}', { owner, repo });
-            const defaultBranch = repoData.default_branch;
-            const { data: branch } = await octokit.request('GET /repos/{owner}/{repo}/branches/{branch}', { owner, repo, branch: defaultBranch });
-            const treeSha = branch.commit.commit.tree.sha;
-            const { data: treeData } = await octokit.request('GET /repos/{owner}/{repo}/git/trees/{tree_sha}', { owner, repo, tree_sha: treeSha, recursive: 'true' });
-            const root: FileNode = { name: repo, type: 'folder', path: '', children: [] };
-            treeData.tree.forEach((item: any) => {
-                if (!item.path) return;
-                const pathParts = item.path.split('/');
-                let currentNode = root;
-                pathParts.forEach((part, index) => {
-                    if (!currentNode.children) { currentNode.children = []; }
-                    let childNode = currentNode.children.find(child => child.name === part);
-                    if (!childNode) {
-                        const isLastPart = index === pathParts.length - 1;
-                        childNode = { name: part, path: item.path, type: isLastPart ? (item.type === 'tree' ? 'folder' : 'file') : 'folder' };
-                         if (childNode.type === 'folder') { childNode.children = []; }
-                        currentNode.children.push(childNode);
-                    }
-                    currentNode = childNode;
-                });
-            });
-            logEvent('getRepoTree_success', { owner, repo, items: treeData.tree.length });
-            return root;
-        } catch (error) {
-            logError(error as Error, { context: 'getRepoTree', owner, repo });
-            throw new Error(`Failed to fetch repository tree: ${(error as Error).message}`);
+    const variables = { owner, repo };
+    const response = await this.bffClient.query<{ github: { repoTree: FileNode } }>(query, variables);
+    // The BFF would recursively fetch the full tree and return it.
+    return response.github.repoTree;
+  }
+
+  /**
+   * @inheritdoc
+   */
+  public async getFileContent(owner: string, repo: string, path: string): Promise<string> {
+    const query = `
+      query GetFileContent($owner: String!, $repo: String!, $path: String!) {
+        github {
+          fileContent(owner: $owner, repo: $repo, path: $path)
         }
-    });
-};
+      }
+    `;
 
-export const getFileContent = async (octokit: Octokit, owner: string, repo: string, path: string): Promise<string> => {
-    return measurePerformance('getFileContent', async () => {
-        logEvent('getFileContent_start', { owner, repo, path });
-        try {
-            const { data } = await octokit.request('GET /repos/{owner}/{repo}/contents/{path}', { owner, repo, path });
-            if (Array.isArray(data) || data.type !== 'file' || typeof data.content !== 'string') { throw new Error("Path did not point to a valid file or content was missing."); }
-            const content = atob(data.content);
-            logEvent('getFileContent_success', { owner, repo, path, size: content.length });
-            return content;
-        } catch (error) {
-             logError(error as Error, { context: 'getFileContent', owner, repo, path });
-             throw new Error(`Failed to fetch file content for "${path}": ${(error as Error).message}`);
-        }
-    });
-};
+    const variables = { owner, repo, path };
+    const response = await this.bffClient.query<{ github: { fileContent: string } }>(query, variables);
+    return response.github.fileContent;
+  }
 
-export const commitFiles = async (
-    octokit: Octokit,
+  /**
+   * @inheritdoc
+   */
+  public async commitFiles(
     owner: string,
     repo: string,
     files: { path: string; content: string }[],
     message: string,
     branch: string = 'main'
-): Promise<string> => {
-    return measurePerformance('commitFiles', async () => {
-        logEvent('commitFiles_start', { owner, repo, fileCount: files.length, branch });
-
-        try {
-            const { data: refData } = await octokit.request('GET /repos/{owner}/{repo}/git/ref/{ref}', {
-                owner,
-                repo,
-                ref: `heads/${branch}`,
-            });
-            const latestCommitSha = refData.object.sha;
-
-            const { data: commitData } = await octokit.request('GET /repos/{owner}/{repo}/git/commits/{commit_sha}', {
-                owner,
-                repo,
-                commit_sha: latestCommitSha,
-            });
-            const baseTreeSha = commitData.tree.sha;
-
-            const blobPromises = files.map(file =>
-                octokit.request('POST /repos/{owner}/{repo}/git/blobs', {
-                    owner,
-                    repo,
-                    content: file.content,
-                    encoding: 'utf-8',
-                })
-            );
-            const blobs = await Promise.all(blobPromises);
-            
-            const tree = blobs.map((blob, index) => ({
-                path: files[index].path,
-                mode: '100644' as const,
-                type: 'blob' as const,
-                sha: blob.data.sha,
-            }));
-
-            const { data: newTree } = await octokit.request('POST /repos/{owner}/{repo}/git/trees', {
-                owner,
-                repo,
-                base_tree: baseTreeSha,
-                tree,
-            });
-
-            const { data: newCommit } = await octokit.request('POST /repos/{owner}/{repo}/git/commits', {
-                owner,
-                repo,
-                message,
-                tree: newTree.sha,
-                parents: [latestCommitSha],
-            });
-
-            await octokit.request('PATCH /repos/{owner}/{repo}/git/refs/{ref}', {
-                owner,
-                repo,
-                ref: `heads/${branch}`,
-                sha: newCommit.sha,
-            });
-
-            logEvent('commitFiles_success', { commitUrl: newCommit.html_url });
-            return newCommit.html_url;
-
-        } catch (error) {
-            logError(error as Error, { context: 'commitFiles', owner, repo, branch });
-            throw new Error(`Failed to commit files: ${(error as Error).message}`);
+  ): Promise<string> {
+    const mutation = `
+      mutation CommitFiles($commitInput: GitHubCommitInput!) {
+        github {
+          commitFiles(input: $commitInput) {
+            commitUrl
+          }
         }
-    });
-};
+      }
+    `;
+
+    const variables = { 
+      commitInput: { owner, repo, branch, message, files }
+    };
+    const response = await this.bffClient.mutate<{ github: { commitFiles: { commitUrl: string } } }>(mutation, variables);
+    return response.github.commitFiles.commitUrl;
+  }
+}
