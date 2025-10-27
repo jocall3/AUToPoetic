@@ -37,8 +37,6 @@ import type { ViewType, AppUser } from '../types';
 interface SessionState {
   /** The authenticated user's profile information. Null if not authenticated. */
   user: AppUser | null;
-  /** A boolean flag indicating if the user is currently authenticated. */
-  isAuthenticated: boolean;
 }
 
 /**
@@ -59,6 +57,8 @@ interface WorkspaceState {
 interface UserPreferences {
   /** A list of feature IDs that the user has chosen to hide from the UI. */
   hiddenFeatures: string[];
+  /** The user's Gemini API key for using AI features. */
+  geminiApiKey: string | null;
 }
 
 /**
@@ -78,9 +78,10 @@ interface GlobalState {
  * @description A union type representing all possible actions that can be dispatched to update the global state.
  */
 type Action =
-  | { type: 'SET_SESSION'; payload: SessionState }
+  | { type: 'SET_APP_USER'; payload: AppUser | null }
   | { type: 'SET_VIEW'; payload: { view: ViewType, props?: Record<string, any> } }
-  | { type: 'TOGGLE_FEATURE_VISIBILITY'; payload: { featureId: string } };
+  | { type: 'TOGGLE_FEATURE_VISIBILITY'; payload: { featureId: string } }
+  | { type: 'SET_GEMINI_API_KEY'; payload: string | null };
 
 /**
  * @const initialState
@@ -89,7 +90,6 @@ type Action =
 const initialState: GlobalState = {
   session: {
     user: null,
-    isAuthenticated: false,
   },
   workspace: {
     activeView: 'ai-command-center',
@@ -97,6 +97,7 @@ const initialState: GlobalState = {
   },
   preferences: {
     hiddenFeatures: [],
+    geminiApiKey: null,
   },
 };
 
@@ -108,10 +109,12 @@ const initialState: GlobalState = {
  */
 const reducer = (state: GlobalState, action: Action): GlobalState => {
   switch (action.type) {
-    case 'SET_SESSION':
+    case 'SET_APP_USER':
       return {
         ...state,
-        session: action.payload,
+        session: {
+          user: action.payload,
+        },
       };
     case 'SET_VIEW':
       return {
@@ -136,6 +139,14 @@ const reducer = (state: GlobalState, action: Action): GlobalState => {
             },
         };
     }
+    case 'SET_GEMINI_API_KEY':
+      return {
+        ...state,
+        preferences: {
+          ...state.preferences,
+          geminiApiKey: action.payload,
+        },
+      };
     default:
       return state;
   }
@@ -186,6 +197,7 @@ export const GlobalStateProvider: React.FC<{ children: React.ReactNode }> = ({ c
               preferences: {
                 ...initial.preferences,
                 hiddenFeatures: storedPrefs.hiddenFeatures || [],
+                geminiApiKey: storedPrefs.geminiApiKey || null,
               },
               workspace: {
                 ...initial.workspace,
@@ -208,7 +220,8 @@ export const GlobalStateProvider: React.FC<{ children: React.ReactNode }> = ({ c
                 // Only persist preferences and non-sensitive workspace state
                 const stateToSave = { 
                     hiddenFeatures: state.preferences.hiddenFeatures,
-                    activeView: state.workspace.activeView
+                    activeView: state.workspace.activeView,
+                    geminiApiKey: state.preferences.geminiApiKey,
                 };
                 localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(stateToSave));
             } catch (error) {
