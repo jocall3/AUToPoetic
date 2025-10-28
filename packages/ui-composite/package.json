@@ -5,6 +5,18 @@
   "main": "dist/index.js",
   "module": "dist/index.mjs",
   "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.mjs"
+      },
+      "require": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
+    }
+  },
   "license": "MIT",
   "author": "Jester AI Implementation Team",
   "keywords": [
@@ -22,7 +34,7 @@
     "access": "public"
   },
   "scripts": {
-    "build": "tsup src/index.ts --format cjs,esm --dts",
+    "build": "echo \"export * from './components/DockManager';\" > src/index.ts && echo \"export * from './components/WindowingSystem';\" >> src/index.ts && tsup src/index.ts --format cjs,esm --dts",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "test": "vitest run",
     "clean": "rm -rf dist .turbo"
