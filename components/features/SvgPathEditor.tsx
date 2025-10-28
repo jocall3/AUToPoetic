@@ -16,7 +16,6 @@ import React, { useState, useRef, useCallback, useEffect, useMemo } from 'react'
 /**
  * @description Simulates a custom hook for offloading tasks to a web worker pool.
  * In a real implementation, this would interact with the WorkerPoolManager service.
- * It manages the lifecycle of a task: execution, loading state, result, and errors.
  * @performance Offloads computation from the main thread, improving UI responsiveness.
  * @param taskFn The function to be executed in the worker. It should be a pure function.
  * @returns A tuple containing the task result, an execute function, loading state, and any error.
@@ -53,7 +52,7 @@ const CodeBracketSquareIcon = () => <div className="w-6 h-6"><svg xmlns="http://
 const ArrowDownTrayIcon = () => <div className="w-4 h-4"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" /></svg></div>;
 
 // Assuming a refactored file utility service in the new infrastructure layer
-import { downloadFile } from '../../services/fileUtils.ts'; // Keeping old import path as new one is not defined in context
+import { downloadFile } from '../../services/fileUtils';
 
 // --- Type Definitions ---
 
@@ -100,7 +99,6 @@ interface DraggingState {
  * @performance This can be a computationally intensive task for complex paths, making it ideal for a worker.
  * @param {string} d - The SVG path data string (the `d` attribute).
  * @returns {PathCommand[]} An array of structured path commands.
- * @example parsePathData("M 10 10 L 20 20"); // returns [{id: 0, command: 'M', points: [{x: 10, y: 10}]}, ...]
  */
 const parsePathData = (d: string): PathCommand[] => {
     const commands = d.match(/[a-df-z][^a-df-z]*/ig) || [];
@@ -161,7 +159,6 @@ export const SvgPathEditor: React.FC = () => {
     
     // Effect to rebuild the path string when the command structure is modified by the UI.
     useEffect(() => {
-        // Only rebuild if there are commands and no drag is active, to avoid rebuilding on every mouse move.
         if (parsedCommands.length > 0 && !draggingPoint) {
              executeBuild(parsedCommands);
         }
@@ -236,7 +233,7 @@ export const SvgPathEditor: React.FC = () => {
                     <div className="flex flex-col">
                         <div className="flex justify-between items-center mb-2">
                             <label htmlFor="path-input" className="text-sm font-medium text-text-secondary">Path Data (d attribute)</label>
-                            <button onClick={handleDownload} className="flex items-center gap-1 px-3 py-1 bg-gray-100 text-xs rounded-md hover:bg-gray-200">
+                            <button onClick={handleDownload} className="flex items-center gap-1 px-3 py-1 bg-gray-100 dark:bg-slate-700 text-xs rounded-md hover:bg-gray-200 dark:hover-bg-slate-600">
                                 <ArrowDownTrayIcon /> Download SVG
                             </button>
                         </div>
@@ -263,12 +260,12 @@ export const SvgPathEditor: React.FC = () => {
                             )}
                         </svg>
                     </div>
-                    <p className="text-xs text-center text-text-secondary">Double-click on the canvas to add a new point.</p>
+                    <p className="text-xs text-center text-text-secondary">Double-click on the canvas to add a new line point.</p>
                 </div>
                 <div className="flex flex-col h-full">
                     <label className="text-sm font-medium text-text-secondary mb-2">Parsed Commands</label>
                     <div className="flex-grow p-2 bg-background border border-border rounded-md overflow-y-auto font-mono text-xs space-y-2">
-                        {isParsing && <div className="p-2 text-center text-text-secondary">Parsing...</div>}
+                        {(isParsing || isBuilding) && <div className="p-2 text-center text-text-secondary">Processing...</div>}
                         {parsedCommands.map(cmd => (
                             <div key={cmd.id} className="p-2 bg-surface rounded">
                                 <span className="font-bold text-amber-600">{cmd.command}</span>

@@ -7,7 +7,7 @@
  * @performance This module improves perceived performance by caching loaded components and providing a preloader hook.
  */
 
-// Copyright James Burvel O’Callaghan III
+// Copyright James Burvel Oâ€™Callaghan III
 // President Citibank Demo Business Inc.
 
 import React, { lazy, useEffect } from 'react';
@@ -231,7 +231,7 @@ const jesterComponentCache = new JesterComponentCache();
 
 /**
  * @interface JesterLazyOptions
- * @description Additional options for the lazyWithRetry function.
+ * @description Additional options for the lazyWithJesterResilience function.
  */
 interface JesterLazyOptions extends JesterRetryOptions {
     /** An optional key for caching this component. */
@@ -253,9 +253,9 @@ interface JesterLazyOptions extends JesterRetryOptions {
  * @param {JesterLazyOptions} [options] - Configuration for retry, caching, and lifecycle callbacks.
  * @returns {React.LazyExoticComponent<T>} A lazy-loaded React component with resilience.
  * @example
- * const MyComponent = lazyWithRetry(() => import('./MyComponent'), 'MyComponent');
+ * const MyComponent = lazyWithJesterResilience(() => import('./MyComponent'), 'MyComponent');
  */
-export const lazyWithRetry = <T extends React.ComponentType<any>>(
+export const lazyWithJesterResilience = <T extends React.ComponentType<any>>(
     componentImport: () => Promise<{ [key: string]: T }>,
     exportName: string = 'default',
     options?: JesterLazyOptions

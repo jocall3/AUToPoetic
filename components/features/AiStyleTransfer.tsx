@@ -33,20 +33,20 @@
 
 import React, { useState, useCallback } from 'react';
 
-// Core UI and shared components from the new abstracted UI framework.
-import { Button } from '@core-ui/Button';
-import { Flex } from '@core-ui/Flex';
-import { Grid } from '@core-ui/Grid';
-import { Panel } from '@core-ui/Panel';
-import { TextArea } from '@core-ui/TextArea';
-import { FeatureHeader } from '@composite-ui/FeatureHeader';
-import { LoadingSpinner } from '@shared-ui/LoadingSpinner';
-import { MarkdownRenderer } from '@shared-ui/MarkdownRenderer';
-import { SparklesIcon } from '@core-ui/icons';
+// As per architectural directives, these would be from a proprietary UI framework
+import { Button } from '@/ui/core/Button';
+import { Flex } from '@/ui/core/Flex';
+import { Grid } from '@/ui/core/Grid';
+import { Panel } from '@/ui/core/Panel';
+import { TextArea } from '@/ui/core/TextArea';
+import { FeatureHeader } from '@/ui/composite/FeatureHeader';
+import { LoadingSpinner } from '@/components/shared/LoadingSpinner';
+import { MarkdownRenderer } from '@/components/shared/MarkdownRenderer';
+import { SparklesIcon } from '@/ui/icons';
 
-// Data fetching is now handled by hooks that abstract GraphQL mutations.
-import { useStyleTransferMutation } from '../../graphql/hooks/useStyleTransferMutation';
-import { useNotification } from '../../contexts/NotificationContext';
+// Data fetching is handled by hooks that abstract GraphQL mutations to the BFF
+import { useStyleTransferMutation } from '@/hooks/mutations/useStyleTransferMutation';
+import { useNotification } from '@/contexts/NotificationContext';
 
 /**
  * @constant {string} exampleCode
@@ -85,6 +85,7 @@ export const AiStyleTransfer: React.FC = () => {
     const [outputCode, setOutputCode] = useState<string>('');
 
     const { addNotification } = useNotification();
+    // This hook encapsulates the GraphQL mutation to the BFF for style transfer
     const { mutate: runStyleTransfer, isLoading, error } = useStyleTransferMutation();
 
     /**

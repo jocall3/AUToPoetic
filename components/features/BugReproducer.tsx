@@ -18,29 +18,27 @@
 
 import React, { useState, useCallback, useMemo } from 'react';
 
-// Imagined UI framework components
-// import { Button } from '@core/ui/Button';
-// import { TextArea } from '@core/ui/TextArea';
-// import { Label } from '@core/ui/Label';
-// import { Spinner } from '@core/ui/Spinner';
-// import { Panel, PanelHeader, PanelContent } from '@composite/ui/Panel';
-// import { SplitPanel } from '@composite/ui/SplitPanel';
-// import { Header } from '@composite/ui/Header';
-
-// NOTE: For this refactoring, we'll use placeholder components and hooks
-// to demonstrate the new architecture. A full implementation would import
-// these from the proprietary UI and hooks libraries.
-
+// Assumed service imports based on the new architecture
 import { generateBugReproductionTestStream } from '../../services/aiService';
+
+// Assumed UI framework imports
 import { BugAntIcon } from '../icons';
 import { LoadingSpinner, MarkdownRenderer } from '../shared';
 
-// Placeholder Hook - This would live in a separate hooks file.
+// This custom hook encapsulates the business logic for the bug reproducer feature.
+// In a real application, this would likely live in a separate `hooks` directory.
 const useBugReproducer = () => {
     const [generatedTest, setGeneratedTest] = useState('');
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState('');
 
+    /**
+     * @function generateTest
+     * @description Initiates a streaming request to the AI service to generate a bug reproduction test.
+     * @param {string} stackTrace - The stack trace of the bug.
+     * @param {string} context - Relevant code context for the bug.
+     * @returns {Promise<void>}
+     */
     const generateTest = useCallback(async (stackTrace: string, context: string) => {
         if (!stackTrace.trim()) {
             setError('Please provide a stack trace.');
@@ -52,7 +50,6 @@ const useBugReproducer = () => {
         try {
             // In the new architecture, this would make a GraphQL call to the BFF,
             // which then orchestrates calls to downstream microservices (e.g., AIGatewayService).
-            // The GraphQL call itself would be handled by a dedicated service/hook.
             // For this demonstration, we'll keep the direct service call but acknowledge the change.
             const stream = generateBugReproductionTestStream(stackTrace, context);
             let fullResponse = '';

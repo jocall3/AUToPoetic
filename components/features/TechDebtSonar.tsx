@@ -3,20 +3,18 @@
  * @description A feature component that analyzes code for "code smells" and technical debt.
  * This component has been refactored to align with the new architectural directives, including
  * offloading computation to a web worker and utilizing the proprietary UI framework.
- * @copyright James Burvel O’Callaghan III
+ * @copyright James Burvel O'Callaghan III
  * @license Apache-2.0
  */
 
 import React, { useState, useCallback } from 'react';
 
 // Architectural imports
-import { workerPoolManager } from '../../services/workerPoolManager';
-import type { CodeSmell } from '../../types.ts';
-import { MagnifyingGlassIcon } from '../icons.tsx';
-
-// Proprietary UI Framework components (assumed)
-import { Button, Spinner } from '../../components/ui/core';
-import { Panel, Accordion, Grid, Header, Text, Badge, TextArea } from '../../components/ui/composite';
+import { useNotification } from '../../contexts/NotificationContext';
+import { useWorkerTask } from '../../hooks/useWorkerTask';
+import type { CodeSmell } from '../../types';
+import { MagnifyingGlassIcon, SparklesIcon } from '../icons';
+import { LoadingSpinner } from '../shared';
 
 const exampleCode = `class DataProcessor {
     process(data) {
@@ -48,7 +46,7 @@ const exampleCode = `class DataProcessor {
 /**
  * @module TechDebtSonar
  * @description A feature component that analyzes code for "code smells" and technical debt.
- * @performance Offloads AI analysis to a dedicated web worker via the WorkerPoolManager to keep the main thread responsive.
+ * @performance Offloads AI analysis to a dedicated web worker via the `useWorkerTask` hook to keep the main thread responsive.
  * @security The code is sent to a backend service for analysis; ensure no sensitive information is included in public-facing versions. The analysis itself happens on a secure, isolated backend.
  * @example
  * <TechDebtSonar />
@@ -56,12 +54,12 @@ const exampleCode = `class DataProcessor {
 export const TechDebtSonar: React.FC = () => {
     const [code, setCode] = useState<string>(exampleCode);
     const [smells, setSmells] = useState<CodeSmell[]>([]);
-    const [isLoading, setIsLoading] = useState<boolean>(false);
-    const [error, setError] = useState<string>('');
+    const { addNotification } = useNotification();
+    const { result, isLoading, error, execute } = useWorkerTask<CodeSmell[]>('detectCodeSmells');
 
     /**
      * @function handleScan
-     * @description Initiates a code smell analysis by enqueuing a task to the web worker pool.
+     * @description Initiates a code smell analysis by executing a task in the web worker pool.
      * Manages the loading and error states of the component during the analysis.
      * @performance The actual AI call (`detectCodeSmells`) is executed in a web worker,
      * preventing UI blocking during the potentially long-running analysis.
@@ -71,98 +69,92 @@ export const TechDebtSonar: React.FC = () => {
      */
     const handleScan = useCallback(async () => {
         if (!code.trim()) {
-            setError('Please provide code to scan.');
+            addNotification('Please provide code to scan.', 'warning');
             return;
         }
-        setIsLoading(true);
-        setError('');
         setSmells([]);
-
-        try {
-            const result = await workerPoolManager.enqueueTask<CodeSmell[]>({
-                task: 'detectCodeSmells',
-                payload: code,
-            });
-            setSmells(result);
-        } catch (err) {
-            const errorMessage = err instanceof Error ? err.message : 'An unknown error occurred in the worker.';
-            setError(`Analysis failed: ${errorMessage}`);
-        } finally {
-            setIsLoading(false);
+        const scanResult = await execute(code);
+        if (scanResult) {
+            setSmells(scanResult);
+            addNotification(`Analysis complete. Found ${scanResult.length} potential code smells.`, 'info');
         }
-    }, [code]);
+    }, [code, execute, addNotification]);
 
     /**
      * Determines the color for a badge based on the smell type.
      * @param {string} smell - The type of code smell.
-     * @returns {'error' | 'warning' | 'info'} The color variant for the Badge component.
+     * @returns {'critical' | 'high' | 'medium' | 'low' | 'info'} The color variant for the Badge component.
      */
-    const getSeverityVariant = (smell: string): 'error' | 'warning' | 'info' => {
-        const lowerSmell = smell.toLowerCase();
-        if (lowerSmell.includes('bug') || lowerSmell.includes('security') || lowerSmell.includes('critical')) {
-            return 'error';
+    const getSeverityVariant = (severity: string): 'critical' | 'high' | 'medium' | 'low' | 'info' => {
+        const lowerSeverity = severity.toLowerCase();
+        switch (lowerSeverity) {
+            case 'critical': return 'critical';
+            case 'high': return 'high';
+            case 'medium': return 'medium';
+            case 'low': return 'low';
+            default: return 'info';
         }
-        if (lowerSmell.includes('complex') || lowerSmell.includes('long method') || lowerSmell.includes('large class')) {
-            return 'warning';
-        }
-        return 'info';
     };
 
     return (
-        <Panel fullHeight>
-            <Header
-                icon={<MagnifyingGlassIcon />}
-                title="Tech Debt Sonar"
-                subtitle="Scan code to find code smells and areas with high complexity."
-            />
-            <Grid columns={2} gap={6} className="flex-grow min-h-0">
-                <Panel.Section direction="column" className="min-h-0">
-                    <Text as="label" htmlFor="code-to-analyze" variant="label">Code to Analyze</Text>
-                    <TextArea
+        <div className="h-full flex flex-col p-4 sm:p-6 lg:p-8 text-text-primary">
+            <header className="mb-6">
+                <h1 className="text-3xl font-bold flex items-center">
+                    <MagnifyingGlassIcon />
+                    <span className="ml-3">Tech Debt Sonar</span>
+                </h1>
+                <p className="text-text-secondary mt-1">Scan code to find code smells, areas with high complexity, and get AI-powered suggestions.</p>
+            </header>
+            <div className="flex-grow grid grid-cols-1 lg:grid-cols-2 gap-6 min-h-0">
+                <div className="flex flex-col gap-4 min-h-0">
+                    <label htmlFor="code-to-analyze" className="text-sm font-medium text-text-secondary">Code to Analyze</label>
+                    <textarea
                         id="code-to-analyze"
                         value={code}
                         onChange={(e) => setCode(e.target.value)}
-                        font="mono"
-                        className="flex-grow resize-none"
+                        className="flex-grow p-4 bg-surface border border-border rounded-md resize-none font-mono text-sm"
+                        spellCheck="false"
                     />
-                    <Button onClick={handleScan} disabled={isLoading} variant="primary" fullWidth className="mt-4">
-                        {isLoading ? <Spinner /> : 'Scan for Code Smells'}
-                    </Button>
-                </Panel.Section>
-                <Panel.Section direction="column" className="min-h-0">
-                    <Text as="label" variant="label">Detected Smells</Text>
-                    <Panel.Content scrollable>
+                    <button onClick={handleScan} disabled={isLoading} className="btn-primary w-full py-3 flex items-center justify-center gap-2">
+                        {isLoading ? <LoadingSpinner /> : <><SparklesIcon /> Scan for Code Smells</>}
+                    </button>
+                </div>
+                <div className="flex flex-col min-h-0">
+                    <label className="text-sm font-medium text-text-secondary">Detected Smells</label>
+                    <div className="flex-grow p-2 bg-background border border-border rounded-lg overflow-y-auto mt-2">
                         {isLoading && (
                             <div className="flex justify-center items-center h-full">
-                                <Spinner size="large" label="Analyzing..." />
+                                <LoadingSpinner />
+                                <span className='ml-2 text-text-secondary'>Analyzing...</span>
                             </div>
                         )}
-                        {error && <Text color="error">{error}</Text>}
-                        {!isLoading && smells.length === 0 && !error && (
+                        {error && <p className="p-4 text-red-500">{error}</p>}
+                        {!isLoading && !error && result && result.length === 0 && (
                             <div className="flex justify-center items-center h-full">
-                                <Text variant="subtle">No smells detected, or scan not run.</Text>
+                                <p className="text-text-secondary">No smells detected. Looks clean!</p>
                             </div>
                         )}
-                        {smells.length > 0 && (
-                            <Accordion type="multiple">
-                                {smells.map((smell, i) => (
-                                    <Accordion.Item key={i} value={`smell-${i}`}>
-                                        <Accordion.Header>
-                                            <div className="flex justify-between items-center w-full">
-                                                <Text weight="bold">{smell.smell}</Text>
-                                                <Badge variant={getSeverityVariant(smell.smell)}>Line: {smell.line}</Badge>
+                        {result && result.length > 0 && (
+                            <div className="space-y-2">
+                                {result.map((smell, i) => (
+                                    <details key={i} className="bg-surface rounded-md border border-border overflow-hidden">
+                                        <summary className="p-3 cursor-pointer hover:bg-surface-hover flex justify-between items-center text-sm">
+                                            <span className="font-semibold truncate pr-4">{smell.smell}</span>
+                                            <div className="flex-shrink-0 flex items-center gap-2">
+                                                <span className={`px-2 py-0.5 text-xs font-bold rounded-full bg-${getSeverityVariant(smell.severity)}-500/10 text-${getSeverityVariant(smell.severity)}-500`}>{smell.severity}</span>
+                                                <span className="px-2 py-0.5 text-xs font-mono rounded-full bg-gray-500/10 text-text-secondary">Line: {smell.line}</span>
                                             </div>
-                                        </Accordion.Header>
-                                        <Accordion.Content>
-                                            <Text>{smell.explanation}</Text>
-                                        </Accordion.Content>
-                                    </Accordion.Item>
+                                        </summary>
+                                        <div className="p-3 border-t border-border text-sm text-text-secondary">
+                                            <p>{smell.explanation}</p>
+                                        </div>
+                                    </details>
                                 ))}
-                            </Accordion>
+                            </div>
                         )}
-                    </Panel.Content>
-                </Panel.Section>
-            </Grid>
-        </Panel>
+                    </div>
+                </div>
+            </div>
+        </div>
     );
 };

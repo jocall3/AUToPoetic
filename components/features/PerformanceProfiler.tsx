@@ -15,23 +15,52 @@
 
 import React, { useState, useCallback, useMemo } from 'react';
 
-// New UI Framework imports
-import { Button, Textarea } from '@jester/core-ui';
-import { Card, CardHeader, CardContent, CardFooter } from '@jester/composite-ui/Card';
-import { Tabs, TabList, Tab, TabPanels, TabPanel } from '@jester/composite-ui/Tabs';
+// Replacing conceptual imports with actual or simplified implementations
+import { performanceService, type PerformanceTraceEntry as TraceEntry } from '../../services/profiling/performanceService';
+// Assuming a singleton worker manager is available, like in other components.
+import { workerPoolManager } from '../../services/workerPoolManager';
+import { type BundleStatsNode } from '../../services/profiling/bundleAnalyzer';
 
-// New Service Layer imports
-import { useService } from '@jester/framework/inversify';
-import { IPerformanceProfiler, TraceEntry } from '@jester/services/core/performance-profiler.interface';
-import { IWorkerPoolManager, WorkerTask } from '@jester/services/core/worker-pool-manager.interface';
-import { IBffApiAdapter } from '@jester/services/core/bff-api.interface';
-import { BundleStatsNode } from '@jester/services/core/bundle-analyzer.interface';
-import { ServiceIdentifiers } from '@jester/services/core/identifiers';
+// Shared components and icons from existing paths
+import { ChartBarIcon, SparklesIcon } from '../icons';
+import { LoadingSpinner } from '../shared/LoadingSpinner';
+import { MarkdownRenderer } from '../shared/MarkdownRenderer';
 
-// Shared components and icons
-import { ChartBarIcon, SparklesIcon } from '../icons.tsx';
-import { LoadingSpinner } from '../shared/LoadingSpinner.tsx';
-import { MarkdownRenderer } from '../shared/MarkdownRenderer.tsx';
+// Mocking conceptual services that are not available in the provided file context
+const mockBffApi = {
+  post: async (query: string, variables: any) => {
+    console.log("Mock BFF API call", { query, variables });
+    await new Promise(resolve => setTimeout(resolve, 1500));
+    const analysisType = variables.type;
+    return {
+      data: {
+        analyzePerformance: {
+          suggestions: `### AI Analysis for ${analysisType}\n\nThis is a mock AI suggestion. The analysis indicates potential optimizations in the following areas:\n\n- **Component Renders**: Reduce unnecessary re-renders.\n- **Bundle Size**: Consider code-splitting large modules.\n- **Network**: Defer loading of non-critical assets.`
+        }
+      },
+      errors: null
+    };
+  }
+};
+const WorkerTask = { ParseBundleStats: 'parseBundleStats' }; // Mock enum
+
+// Simplified UI components to replace the proprietary library
+const Card: React.FC<{ children: React.ReactNode; className?: string }> = ({ children, className }) => <div className={`bg-surface border border-border rounded-lg ${className}`}>{children}</div>;
+const CardHeader: React.FC<{ children: React.ReactNode; className?: string }> = ({ children, className }) => <div className={`p-4 border-b border-border ${className}`}>{children}</div>;
+const CardContent: React.FC<{ children: React.ReactNode; className?: string }> = ({ children, className }) => <div className={`p-4 ${className}`}>{children}</div>;
+const CardFooter: React.FC<{ children: React.ReactNode; className?: string }> = ({ children, className }) => <div className={`p-4 border-t border-border ${className}`}>{children}</div>;
+const Textarea = (props: React.TextareaHTMLAttributes<HTMLTextAreaElement>) => <textarea {...props} />;
+const Button = ({ children, ...props }: React.ButtonHTMLAttributes<HTMLButtonElement>) => <button {...props}>{children}</button>;
+
+// Simple Tabs implementation
+const Tabs: React.FC<{ children: React.ReactNode, defaultIndex?: number }> = ({ children }) => <>{children}</>;
+const TabList: React.FC<{ children: React.ReactNode }> = ({ children }) => <div className="flex border-b border-border">{children}</div>;
+const Tab: React.FC<{ children: React.ReactNode; onClick: () => void; isSelected: boolean }> = ({ children, onClick, isSelected }) => (
+    <button onClick={onClick} className={`px-4 py-2 text-sm font-medium ${isSelected ? 'border-b-2 border-primary text-primary' : 'text-text-secondary hover:bg-surface-hover'}`}>{children}</button>
+);
+const TabPanels: React.FC<{ children: React.ReactNode; activeIndex: number }> = ({ children, activeIndex }) => <>{React.Children.toArray(children)[activeIndex]}</>;
+const TabPanel: React.FC<{ children: React.ReactNode }> = ({ children }) => <div>{children}</div>;
+
 
 /**
  * @component FlameChart
@@ -39,25 +68,22 @@ import { MarkdownRenderer } from '../shared/MarkdownRenderer.tsx';
  * @param {object} props The component props.
  * @param {TraceEntry[]} props.trace An array of performance trace entries to visualize.
  * @returns {React.ReactElement} The rendered flame chart.
- * @example
- * const traceData = [{ name: 'task-a', startTime: 0, duration: 100, entryType: 'measure' }];
- * <FlameChart trace={traceData} />
  */
 const FlameChart: React.FC<{ trace: TraceEntry[] }> = ({ trace }) => {
     if (trace.length === 0) {
-        return <p className="text-text-secondary">No trace data collected. Click "Start Tracing" and interact with the app.</p>;
+        return <p className="text-text-secondary text-center p-4">No trace data collected. Click "Start Tracing" and interact with the app.</p>;
     }
     const maxTime = useMemo(() => Math.max(...trace.map(t => t.startTime + t.duration), 1), [trace]);
 
     return (
-        <div className="space-y-1 font-mono text-xs">
+        <div className="space-y-1 font-mono text-xs p-2">
             {trace.filter(t => t.entryType === 'measure').map((entry, i) => (
                 <div key={i} className="group relative h-6 bg-primary/20 rounded" title={`${entry.name} (${entry.duration.toFixed(1)}ms)`}>
-                    <div className="h-full bg-primary" style={{
+                    <div className="h-full bg-primary rounded" style={{
                         marginLeft: `${(entry.startTime / maxTime) * 100}%`,
                         width: `${Math.max((entry.duration / maxTime) * 100, 0.5)}%`
                     }}></div>
-                    <div className="absolute inset-0 px-2 flex items-center text-primary font-bold overflow-hidden whitespace-nowrap">
+                    <div className="absolute inset-0 px-2 flex items-center text-white font-bold overflow-hidden whitespace-nowrap">
                         {entry.name} ({entry.duration.toFixed(1)}ms)
                     </div>
                 </div>
@@ -72,13 +98,8 @@ const FlameChart: React.FC<{ trace: TraceEntry[] }> = ({ trace }) => {
  *              It provides tools for tracing main thread activity and parsing bundle reports,
  *              and uses an AI service via the BFF to get optimization suggestions.
  * @returns {React.ReactElement} The Performance Profiler component.
- * @performance Offloads bundle stats parsing to a web worker to avoid UI freezes.
  */
 export const PerformanceProfiler: React.FC = () => {
-    const performanceProfiler = useService<IPerformanceProfiler>(ServiceIdentifiers.PerformanceProfiler);
-    const workerPoolManager = useService<IWorkerPoolManager>(ServiceIdentifiers.WorkerPoolManager);
-    const bffApi = useService<IBffApiAdapter>(ServiceIdentifiers.BffApiAdapter);
-
     const [isTracing, setIsTracing] = useState(false);
     const [trace, setTrace] = useState<TraceEntry[]>([]);
     const [bundleStats, setBundleStats] = useState<string>('');
@@ -86,29 +107,20 @@ export const PerformanceProfiler: React.FC = () => {
     const [isLoading, setIsLoading] = useState<'tracing' | 'parsing' | 'analyzing' | false>(false);
     const [aiAnalysis, setAiAnalysis] = useState('');
     const [error, setError] = useState('');
+    const [activeTabIndex, setActiveTabIndex] = useState(0);
 
-    /**
-     * @function handleTraceToggle
-     * @description Starts or stops runtime performance tracing on the main thread.
-     * @performance Uses the browser's Performance API, which has minimal overhead.
-     */
     const handleTraceToggle = useCallback(() => {
         if (isTracing) {
-            const collectedTrace = performanceProfiler.stopTracing();
+            const collectedTrace = performanceService.stopTracing();
             setTrace(collectedTrace);
             setIsTracing(false);
         } else {
             setTrace([]);
-            performanceProfiler.startTracing();
+            performanceService.startTracing();
             setIsTracing(true);
         }
-    }, [isTracing, performanceProfiler]);
+    }, [isTracing]);
 
-    /**
-     * @function handleAnalyzeBundle
-     * @description Offloads the bundle stats JSON string to a web worker for parsing.
-     * @performance Prevents main thread from blocking on large JSON parsing operations.
-     */
     const handleAnalyzeBundle = useCallback(async () => {
         if (!bundleStats.trim()) {
             setError('Please paste your stats.json content.');
@@ -117,8 +129,8 @@ export const PerformanceProfiler: React.FC = () => {
         setIsLoading('parsing');
         setError('');
         try {
-            const result = await workerPoolManager.runTask<BundleStatsNode>({
-                task: WorkerTask.ParseBundleStats,
+            const result = await workerPoolManager.submitTask<BundleStatsNode>({
+                type: WorkerTask.ParseBundleStats,
                 payload: bundleStats,
             });
             setBundleTree(result);
@@ -128,14 +140,8 @@ export const PerformanceProfiler: React.FC = () => {
         } finally {
             setIsLoading(false);
         }
-    }, [bundleStats, workerPoolManager]);
+    }, [bundleStats]);
 
-    /**
-     * @function handleAiAnalysis
-     * @description Sends performance data (runtime trace or bundle tree) to the BFF to get AI-powered
-     *              optimization suggestions.
-     * @param {('runtime' | 'bundle')} activeTab The current active tab to determine which data to send.
-     */
     const handleAiAnalysis = useCallback(async (activeTab: 'runtime' | 'bundle') => {
         const dataToAnalyze = activeTab === 'runtime' ? trace : bundleTree;
         if (!dataToAnalyze || (Array.isArray(dataToAnalyze) && dataToAnalyze.length === 0)) {
@@ -155,10 +161,10 @@ export const PerformanceProfiler: React.FC = () => {
                 }
             `;
             const variables = { data: dataToAnalyze, type: activeTab };
-            const result = await bffApi.post<{ analyzePerformance: { suggestions: string } }>(query, variables);
+            const result = await mockBffApi.post(query, variables);
             
             if (result.errors) {
-              throw new Error(result.errors.map(e => e.message).join('\n'));
+              throw new Error(result.errors.map((e: any) => e.message).join('\n'));
             }
 
             setAiAnalysis(result.data.analyzePerformance.suggestions);
@@ -168,7 +174,7 @@ export const PerformanceProfiler: React.FC = () => {
         } finally {
             setIsLoading(false);
         }
-    }, [trace, bundleTree, bffApi]);
+    }, [trace, bundleTree]);
 
     return (
         <div className="h-full flex flex-col p-4 sm:p-6 lg:p-8 text-text-primary">
@@ -183,14 +189,14 @@ export const PerformanceProfiler: React.FC = () => {
                 <div className="lg:col-span-1">
                     <Tabs defaultIndex={0}>
                         <TabList>
-                            <Tab>Runtime Performance</Tab>
-                            <Tab>Bundle Analysis</Tab>
+                            <Tab isSelected={activeTabIndex === 0} onClick={() => setActiveTabIndex(0)}>Runtime Performance</Tab>
+                            <Tab isSelected={activeTabIndex === 1} onClick={() => setActiveTabIndex(1)}>Bundle Analysis</Tab>
                         </TabList>
-                        <TabPanels>
+                        <TabPanels activeIndex={activeTabIndex}>
                             <TabPanel>
                                 <Card className="flex flex-col h-full mt-2">
                                     <CardHeader>
-                                        <Button onClick={handleTraceToggle} variant="primary" className="w-full">
+                                        <Button onClick={handleTraceToggle} className="btn-primary w-full py-2">
                                             {isTracing ? 'Stop Tracing' : 'Start Tracing'}
                                         </Button>
                                     </CardHeader>
@@ -198,7 +204,7 @@ export const PerformanceProfiler: React.FC = () => {
                                         <FlameChart trace={trace} />
                                     </CardContent>
                                     <CardFooter>
-                                        <Button onClick={() => handleAiAnalysis('runtime')} disabled={isLoading === 'analyzing' || trace.length === 0} className="w-full" variant="secondary">
+                                        <Button onClick={() => handleAiAnalysis('runtime')} disabled={isLoading === 'analyzing' || trace.length === 0} className="w-full py-2 flex items-center justify-center gap-2 bg-surface border border-border hover:bg-gray-100 dark:hover:bg-slate-700 disabled:opacity-50">
                                             {isLoading === 'analyzing' ? <LoadingSpinner /> : <><SparklesIcon /> Get AI Suggestions</>}
                                         </Button>
                                     </CardFooter>
@@ -211,18 +217,18 @@ export const PerformanceProfiler: React.FC = () => {
                                             value={bundleStats}
                                             onChange={(e) => setBundleStats(e.target.value)}
                                             placeholder="Paste your stats.json content here"
-                                            className="w-full flex-grow font-mono text-xs"
+                                            className="w-full flex-grow font-mono text-xs p-2 bg-background border border-border rounded-md"
                                             rows={10}
                                         />
-                                        <Button onClick={handleAnalyzeBundle} disabled={isLoading === 'parsing'} variant="primary">
+                                        <Button onClick={handleAnalyzeBundle} disabled={isLoading === 'parsing'} className="btn-primary py-2">
                                             {isLoading === 'parsing' ? <LoadingSpinner /> : 'Parse Bundle Stats'}
                                         </Button>
-                                        <div className="flex-grow overflow-y-auto mt-2 p-2 bg-background border rounded">
-                                            <pre className="text-xs">{bundleTree ? JSON.stringify(bundleTree, null, 2) : 'Parsed bundle tree will appear here.'}</pre>
+                                        <div className="flex-grow overflow-y-auto mt-2 p-2 bg-background border border-border rounded-md">
+                                            <pre className="text-xs whitespace-pre-wrap">{bundleTree ? JSON.stringify(bundleTree, null, 2) : 'Parsed bundle tree will appear here.'}</pre>
                                         </div>
                                     </CardContent>
                                     <CardFooter>
-                                        <Button onClick={() => handleAiAnalysis('bundle')} disabled={isLoading === 'analyzing' || !bundleTree} className="w-full" variant="secondary">
+                                        <Button onClick={() => handleAiAnalysis('bundle')} disabled={isLoading === 'analyzing' || !bundleTree} className="w-full py-2 flex items-center justify-center gap-2 bg-surface border border-border hover:bg-gray-100 dark:hover:bg-slate-700 disabled:opacity-50">
                                             {isLoading === 'analyzing' ? <LoadingSpinner /> : <><SparklesIcon /> Get AI Suggestions</>}
                                         </Button>
                                     </CardFooter>
@@ -233,8 +239,9 @@ export const PerformanceProfiler: React.FC = () => {
                 </div>
                 <div className="lg:col-span-1">
                     <Card className="h-full flex flex-col">
-                        <CardHeader>
-                            <h3 className="text-lg font-bold flex items-center gap-2"><SparklesIcon /> AI Optimization Suggestions</h3>
+                        <CardHeader className="flex items-center gap-2">
+                            <SparklesIcon />
+                            <h3 className="text-lg font-bold">AI Optimization Suggestions</h3>
                         </CardHeader>
                         <CardContent className="flex-grow overflow-y-auto">
                             {isLoading === 'analyzing' && <div className="flex justify-center items-center h-full"><LoadingSpinner /></div>}

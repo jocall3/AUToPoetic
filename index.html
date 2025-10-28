@@ -1,4 +1,4 @@
-<!-- Copyright James Burvel O’Callaghan III -->
+<!-- Copyright James Burvel O'Callaghan III -->
 <!-- President Citibank Demo Business Inc. -->
 
 <!DOCTYPE html>
@@ -14,6 +14,9 @@
     <meta name="theme-color" content="#0f172a" />
     
     <title>DevCore AI Development Environment</title>
+
+    <!-- Google Sign-In Client Library (Fix: required for authentication) -->
+    <script src="https://accounts.google.com/gsi/client" async defer id="gsi-client"></script>
 
     <style>
       /* Basic styles to prevent flash of unstyled content and provide a loading state */
@@ -39,18 +42,16 @@
       }
     </style>
 
-    <!-- The main stylesheet for the application shell will be injected here by the build process. -->
-    <link rel="stylesheet" href="/assets/shell.css">
+    <!-- Vite will inject the final stylesheet link here during the build process. -->
   </head>
   <body>
     <div id="root"></div>
     <noscript>You need to enable JavaScript to run this application.</noscript>
     
-    <!--
-      The main application entry point. In a federated architecture, this script
-      is the "shell" or "host" application responsible for loading and orchestrating
-      the various micro-frontends (MFE). All dependencies are bundled.
+    <!-- 
+      Main application entry point for Vite.
+      This points to the root index.tsx file which bootstraps the React app.
     -->
-    <script type="module" src="/assets/shell.js" defer></script>
+    <script type="module" src="/index.tsx"></script>
   </body>
 </html>

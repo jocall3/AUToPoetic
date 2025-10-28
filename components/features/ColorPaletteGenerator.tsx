@@ -61,12 +61,7 @@ interface ColorSelectorProps {
  * @returns {React.ReactElement} A row for selecting a color.
  * @example <ColorSelector label="Card Background" value="#ffffff" palette={['#ffffff', '#000000']} onChange={setColor} />
  */
-const ColorSelector: React.FC<ColorSelectorProps> = ({
-  label,
-  value,
-  palette,
-  onChange,
-}) => (
+const ColorSelector: React.FC<ColorSelectorProps> = ({ label, value, palette, onChange }) => (
   <Stack direction="row" justify="space-between" align="center">
     <Text as="label" size="sm">
       {label}
@@ -101,11 +96,7 @@ interface PreviewCardProps {
  * @returns {React.ReactElement} A preview card demonstrating the theme.
  * @performance Renders a simple UI card. Performance is not a concern for this component.
  */
-const PreviewCard: React.FC<PreviewCardProps> = ({
-  palette,
-  colors,
-  onColorsChange,
-}) => {
+const PreviewCard: React.FC<PreviewCardProps> = ({ palette, colors, onColorsChange }) => {
   return (
     <Card className="w-full max-w-sm">
       <Card.Header>
@@ -115,10 +106,7 @@ const PreviewCard: React.FC<PreviewCardProps> = ({
       </Card.Header>
       <Card.Body>
         <Stack spacing={4}>
-          <div
-            className="p-8 rounded-xl"
-            style={{ backgroundColor: colors.cardBg }}
-          >
+          <div className="p-8 rounded-xl" style={{ backgroundColor: colors.cardBg }}>
             <div
               className="px-4 py-1 rounded-full text-center text-sm inline-block"
               style={{
@@ -140,46 +128,11 @@ const PreviewCard: React.FC<PreviewCardProps> = ({
             </div>
           </div>
           <Stack spacing={3}>
-            <ColorSelector
-              label="Card Background"
-              value={colors.cardBg}
-              palette={palette}
-              onChange={(val) =>
-                onColorsChange((c) => ({ ...c, cardBg: val }))
-              }
-            />
-            <ColorSelector
-              label="Pill Background"
-              value={colors.pillBg}
-              palette={palette}
-              onChange={(val) =>
-                onColorsChange((c) => ({ ...c, pillBg: val }))
-              }
-            />
-            <ColorSelector
-              label="Pill Text"
-              value={colors.pillText}
-              palette={palette}
-              onChange={(val) =>
-                onColorsChange((c) => ({ ...c, pillText: val }))
-              }
-            />
-            <ColorSelector
-              label="Button Background"
-              value={colors.buttonBg}
-              palette={palette}
-              onChange={(val) =>
-                onColorsChange((c) => ({ ...c, buttonBg: val }))
-              }
-            />
-            <ColorSelector
-              label="Button Text"
-              value={colors.buttonText}
-              palette={palette}
-              onChange={(val) =>
-                onColorsChange((c) => ({ ...c, buttonText: val }))
-              }
-            />
+            <ColorSelector label="Card Background" value={colors.cardBg} palette={palette} onChange={(val) => onColorsChange((c) => ({ ...c, cardBg: val }))} />
+            <ColorSelector label="Pill Background" value={colors.pillBg} palette={palette} onChange={(val) => onColorsChange((c) => ({ ...c, pillBg: val }))} />
+            <ColorSelector label="Pill Text" value={colors.pillText} palette={palette} onChange={(val) => onColorsChange((c) => ({ ...c, pillText: val }))} />
+            <ColorSelector label="Button Background" value={colors.buttonBg} palette={palette} onChange={(val) => onColorsChange((c) => ({ ...c, buttonBg: val }))} />
+            <ColorSelector label="Button Text" value={colors.buttonText} palette={palette} onChange={(val) => onColorsChange((c) => ({ ...c, buttonText: val }))} />
           </Stack>
         </Stack>
       </Card.Body>
@@ -205,21 +158,16 @@ export const ColorPaletteGenerator: React.FC = () => {
     buttonText: theme.colors.textOnPrimary,
   });
 
-  const {
-    mutate: generatePalette,
-    isLoading,
-    error,
-  } = useAIGateway<ColorPalette>({
+  const { mutate: generatePalette, isLoading, error } = useAIGateway<ColorPalette>({
     endpoint: 'generateColorPalette',
     onSuccess: (data) => {
       setPalette(data.colors);
-      // Automatically set preview colors based on the generated palette
       setPreviewColors({
-        cardBg: data.colors[0], // Lightest shade for background
-        pillBg: data.colors[2], // A mid-tone for pill background
-        pillText: data.colors[5], // Darkest shade for text on mid-tone
-        buttonBg: data.colors[5], // Darkest shade for button
-        buttonText: data.colors[0], // Lightest shade for text on button
+        cardBg: data.colors[0], 
+        pillBg: data.colors[2], 
+        pillText: data.colors[5], 
+        buttonBg: data.colors[5], 
+        buttonText: data.colors[0], 
       });
       addNotification('New color palette generated!', 'success');
     },
@@ -232,22 +180,12 @@ export const ColorPaletteGenerator: React.FC = () => {
     generatePalette({ baseColor });
   }, [baseColor, generatePalette]);
 
-  /**
-   * @security Client-side file generation. The content is generated from component state
-   * and does not include arbitrary user input beyond the color hex codes, mitigating injection risks.
-   * The user is prompted to save the file, adhering to browser security models.
-   */
   const downloadColorsAsCss = () => {
     if (palette.length === 0) return;
-    const cssContent = `:root {\n${palette
-      .map((c, i) => `  --color-palette-${i + 1}: ${c};`)
-      .join('\n')}\n}`;
+    const cssContent = `:root {\n${palette.map((c, i) => `  --color-palette-${i + 1}: ${c};`).join('\n')}\n}`;
     downloadFileAsText(cssContent, 'palette.css', 'text/css');
   };
   
-  /**
-   * @security Similar to downloadColorsAsCss, this generates a file from trusted component state.
-   */
   const downloadCardAsHtml = () => {
     if (palette.length === 0) return;
     const htmlContent = `
@@ -299,29 +237,14 @@ export const ColorPaletteGenerator: React.FC = () => {
           Pick a base color, let AI design a palette, and preview it on a UI card.
         </Text>
       </Stack>
-      <Grid
-        columns={{ initial: 1, lg: 3 }}
-        gap={8}
-        align="center"
-        className="flex-grow items-start justify-center"
-      >
+      <Grid columns={{ initial: 1, lg: 3 }} gap={8} align="center" className="flex-grow items-start justify-center">
         <Stack direction="column" align="center" spacing={4}>
-          <HexColorPicker
-            color={baseColor}
-            onChange={setBaseColor}
-            className="!w-64 !h-64"
-          />
-          <Card className="p-2 font-mono text-lg" style={{ color: baseColor }}>
-            {baseColor}
-          </Card>
+          <HexColorPicker color={baseColor} onChange={setBaseColor} className="!w-64 !h-64" />
+          <Card className="p-2 font-mono text-lg" style={{ color: baseColor }}>{baseColor}</Card>
           <Button onClick={handleGenerate} disabled={isLoading} fullWidth size="lg">
             {isLoading ? <Spinner /> : 'Generate Palette'}
           </Button>
-          {error && (
-            <Text color="danger" size="sm" className="mt-2">
-              {error.message}
-            </Text>
-          )}
+          {error && <Text color="danger" size="sm" className="mt-2">{error.message}</Text>}
         </Stack>
         
         <Stack direction="column" spacing={2} className="w-full max-w-sm">
@@ -335,30 +258,10 @@ export const ColorPaletteGenerator: React.FC = () => {
           ) : (
             <>
               {palette.map((color) => (
-                <Card
-                  key={color}
-                  className="group"
-                  style={{ backgroundColor: color }}
-                >
-                  <Stack
-                    direction="row"
-                    justify="space-between"
-                    align="center"
-                    className="p-4"
-                  >
-                    <Text
-                      as="span"
-                      weight="bold"
-                      className="font-mono text-black/70 mix-blend-overlay"
-                    >
-                      {color}
-                    </Text>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => navigator.clipboard.writeText(color)}
-                      className="opacity-0 group-hover:opacity-100 transition-opacity bg-white/30 hover:bg-white/50 text-black backdrop-blur-sm"
-                    >
+                <Card key={color} className="group" style={{ backgroundColor: color }}>
+                  <Stack direction="row" justify="space-between" align="center" className="p-4">
+                    <Text as="span" weight="bold" className="font-mono text-black/70 mix-blend-overlay">{color}</Text>
+                    <Button variant="ghost" size="sm" onClick={() => navigator.clipboard.writeText(color)} className="opacity-0 group-hover:opacity-100 transition-opacity bg-white/30 hover:bg-white/50 text-black backdrop-blur-sm">
                       Copy
                     </Button>
                   </Stack>
@@ -377,11 +280,7 @@ export const ColorPaletteGenerator: React.FC = () => {
         </Stack>
 
         {!isLoading && palette.length > 0 && (
-          <PreviewCard
-            palette={palette}
-            colors={previewColors}
-            onColorsChange={setPreviewColors}
-          />
+          <PreviewCard palette={palette} colors={previewColors} onColorsChange={setPreviewColors} />
         )}
       </Grid>
     </Stack>

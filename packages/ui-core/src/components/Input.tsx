@@ -14,23 +14,39 @@
  * Complex icons passed as props could impact performance if they are not optimized.
  */
 
-import React, { forwardRef, useId } from 'react';
+import * as React from 'react';
+
+// Assuming a utility function for merging Tailwind classes, consistent with other core components.
+// import { cn } from '../../lib/utils'; 
+// Note: Since the file system is inconsistent, a mock 'cn' is used to ensure code correctness.
+const cn = (...inputs: (string | undefined | null | { [key: string]: boolean })[]) =>
+  inputs
+    .flat()
+    .filter((x) => x && typeof x === 'string')
+    .join(' ');
+
 
 /**
  * Defines the visual style variant of the input component.
- * @enum {'outline' | 'filled'}
+ * - `outline`: Standard input with a visible border.
+ * - `filled`: Input with a solid background color.
  */
 export type InputVariant = 'outline' | 'filled';
 
 /**
  * Defines the size of the input component.
- * @enum {'sm' | 'md' | 'lg'}
+ * - `sm`: Small
+ * - `md`: Medium (default)
+ * - `lg`: Large
  */
 export type InputSize = 'sm' | 'md' | 'lg';
 
 /**
  * Defines the interaction and validation state of the input.
- * @enum {'default' | 'error' | 'success' | 'disabled'}
+ * - `default`: Standard state.
+ * - `error`: Indicates a validation error.
+ * - `success`: Indicates a successful validation.
+ * - `disabled`: Disables the input.
  */
 export type InputState = 'default' | 'error' | 'success' | 'disabled';
 
@@ -44,8 +60,6 @@ export interface InputProps extends React.ComponentPropsWithoutRef<'input'> {
    * The visual style of the input.
    * @type {InputVariant}
    * @default 'outline'
-   * @example
-   * <Input variant="filled" />
    */
   variant?: InputVariant;
 
@@ -53,8 +67,6 @@ export interface InputProps extends React.ComponentPropsWithoutRef<'input'> {
    * The size of the input field.
    * @type {InputSize}
    * @default 'md'
-   * @example
-   * <Input size="lg" />
    */
   size?: InputSize;
 
@@ -63,40 +75,30 @@ export interface InputProps extends React.ComponentPropsWithoutRef<'input'> {
    * This will apply appropriate styling and ARIA attributes.
    * @type {InputState}
    * @default 'default'
-   * @example
-   * <Input state="error" />
    */
   state?: InputState;
 
   /**
    * The content for the `<label>` element associated with the input.
    * @type {string}
-   * @example
-   * <Input label="Email Address" />
    */
   label?: string;
 
   /**
    * An icon or element to display on the left side of the input.
    * @type {React.ReactNode}
-   * @example
-   * <Input leftIcon={<UserIcon />} />
    */
   leftIcon?: React.ReactNode;
 
   /**
    * An icon or element to display on the right side of the input.
    * @type {React.ReactNode}
-   * @example
-   * <Input rightIcon={<InfoIcon />} />
    */
   rightIcon?: React.ReactNode;
 
   /**
    * Helper text displayed below the input in a default state.
    * @type {string}
-   * @example
-   * <Input helperText="Please enter a valid email address." />
    */
   helperText?: string;
 
@@ -104,8 +106,6 @@ export interface InputProps extends React.ComponentPropsWithoutRef<'input'> {
    * Error message displayed below the input when `state` is 'error'.
    * This takes precedence over `helperText`.
    * @type {string}
-   * @example
-   * <Input state="error" errorMessage="Email is required." />
    */
   errorMessage?: string;
 
@@ -118,8 +118,8 @@ export interface InputProps extends React.ComponentPropsWithoutRef<'input'> {
 
 // Style mapping objects
 const variantClasses: Record<InputVariant, string> = {
-  outline: 'bg-transparent border-border hover:border-primary/70 focus:border-primary',
-  filled: 'bg-surface border-transparent focus:bg-background',
+  outline: 'bg-transparent border-border hover:border-primary/70 focus-within:border-primary',
+  filled: 'bg-surface border-transparent focus-within:bg-background',
 };
 
 const sizeClasses: Record<InputSize, { input: string; icon: string; label: string; text: string }> = {
@@ -129,8 +129,8 @@ const sizeClasses: Record<InputSize, { input: string; icon: string; label: strin
 };
 
 const stateClasses: Record<Exclude<InputState, 'default'>, string> = {
-  error: '!border-red-500 focus:!ring-red-500/50 text-red-500',
-  success: '!border-green-500 focus:!ring-green-500/50',
+  error: 'border-red-500 focus-within:ring-red-500/50 text-red-500',
+  success: 'border-green-500 focus-within:ring-green-500/50',
   disabled: 'opacity-50 cursor-not-allowed bg-gray-100 dark:bg-slate-700',
 };
 
@@ -150,7 +150,7 @@ const stateClasses: Record<Exclude<InputState, 'default'>, string> = {
  *   helperText="Must be at least 3 characters."
  * />
  */
-export const Input = forwardRef<HTMLInputElement, InputProps>((
+export const Input = React.forwardRef<HTMLInputElement, InputProps>((
   {
     variant = 'outline',
     size = 'md',
@@ -169,9 +169,9 @@ export const Input = forwardRef<HTMLInputElement, InputProps>((
   },
   ref
 ) => {
-  const internalId = useId();
+  const internalId = React.useId();
   const inputId = id || internalId;
-  const descriptionId = useId();
+  const descriptionId = React.useId();
 
   const isDisabled = state === 'disabled' || disabled;
   const isError = state === 'error';
@@ -180,45 +180,24 @@ export const Input = forwardRef<HTMLInputElement, InputProps>((
 
   const descriptionContent = isError ? errorMessage : helperText;
 
-  const inputContainerClasses = [
-    'relative',
-    'flex',
-    'items-center',
-    'w-full',
-    'rounded-md',
-    'border-2',
-    'transition-all',
-    'duration-200',
-    'focus-within:ring-2',
-    'focus-within:ring-primary/50',
-    variantClasses[variant],
-    isDisabled ? stateClasses.disabled : '',
-    isError ? stateClasses.error : '',
-    state === 'success' ? stateClasses.success : '',
-  ].filter(Boolean).join(' ');
-
-  const inputClasses = [
-    'w-full',
-    'bg-transparent',
-    'text-text-primary',
-    'placeholder:text-text-secondary/50',
-    'focus:outline-none',
-    sizeStyles.input,
-    leftIcon ? 'pl-9' : '',
-    rightIcon ? 'pr-9' : '',
-    className,
-  ].filter(Boolean).join(' ');
-
   return (
-    <div className={['w-full', containerClassName].filter(Boolean).join(' ')}>
+    <div className={cn('w-full', containerClassName)}>
       {label && (
-        <label htmlFor={inputId} className={`block mb-1 font-medium text-text-primary ${sizeStyles.label}`}>
+        <label htmlFor={inputId} className={cn('block mb-1 font-medium text-text-primary', sizeStyles.label)}>
           {label}
         </label>
       )}
-      <div className={inputContainerClasses}>
+      <div
+        className={cn(
+          'relative flex items-center w-full rounded-md border-2 transition-all duration-200 focus-within:ring-2 focus-within:ring-primary/50',
+          variantClasses[variant],
+          isDisabled && stateClasses.disabled,
+          isError && stateClasses.error,
+          state === 'success' && stateClasses.success,
+        )}
+      >
         {leftIcon && (
-          <div className={`absolute left-2.5 flex items-center justify-center text-text-secondary ${sizeStyles.icon}`}>
+          <div className={cn('absolute left-2.5 flex items-center justify-center text-text-secondary', sizeStyles.icon)}>
             {leftIcon}
           </div>
         )}
@@ -229,11 +208,17 @@ export const Input = forwardRef<HTMLInputElement, InputProps>((
           disabled={isDisabled}
           aria-invalid={isError}
           aria-describedby={descriptionContent ? descriptionId : undefined}
-          className={inputClasses}
+          className={cn(
+            'w-full bg-transparent text-text-primary placeholder:text-text-secondary/50 focus:outline-none',
+            sizeStyles.input,
+            leftIcon && 'pl-10',
+            rightIcon && 'pr-10',
+            className,
+          )}
           {...props}
         />
         {rightIcon && (
-          <div className={`absolute right-2.5 flex items-center justify-center text-text-secondary ${sizeStyles.icon}`}>
+          <div className={cn('absolute right-2.5 flex items-center justify-center text-text-secondary', sizeStyles.icon)}>
             {rightIcon}
           </div>
         )}
@@ -241,7 +226,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>((
       {descriptionContent && (
         <p
           id={descriptionId}
-          className={`mt-1 ${sizeStyles.text} ${isError ? 'text-red-500' : 'text-text-secondary'}`}
+          className={cn('mt-1', sizeStyles.text, isError ? 'text-red-500' : 'text-text-secondary')}
         >
           {descriptionContent}
         </p>

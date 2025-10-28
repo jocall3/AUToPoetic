@@ -13,35 +13,90 @@
  *              The chat interface uses virtualization for long conversations to maintain performance.
  */
 
-// React and hooks
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 
-// Core UI components from the new proprietary framework
-import { Button, IconButton } from '@/ui/core/Button';
-import { Input, TextArea } from '@/ui/core/Input';
-import { Select } from '@/ui/core/Select';
-import { Card } from '@/ui/core/Card';
-import { Layout } from '@/ui/composite/Layout';
-import { Sidebar } from '@/ui/composite/Sidebar';
-import { LoadingSpinner } from '@/ui/core/LoadingSpinner';
+import { SparklesIcon, PlusIcon, TrashIcon, ArrowDownTrayIcon, ArrowUpOnSquareIcon, PaperAirplaneIcon } from '../icons';
+import { useAiPersonalities } from '../../hooks/useAiPersonalities';
+import { useNotification } from '../../contexts/NotificationContext';
+import { streamContent } from '../../services/aiService';
+import type { SystemPrompt, ChatMessage } from '../../types';
+import { MarkdownRenderer, LoadingSpinner } from '../shared';
 
-// Icons
-import { SparklesIcon, PlusIcon, TrashIcon, ArrowDownTrayIcon, ArrowUpOnSquareIcon, PaperAirplaneIcon } from '@/components/icons';
+// --- Mock/Placeholder Implementations for Broken Dependencies ---
 
-// Hooks and Contexts
-import { useAiPersonalities } from '@/hooks/useAiPersonalities';
-import { useNotification } from '@/contexts/NotificationContext';
-import { useWorkerPool } from '@/hooks/useWorkerPool';
+// Mock for a worker pool hook, as the original seems to point to a non-existent hook.
+const useWorkerPool = () => ({
+  submitTask: async <T, P>(taskName: string, payload: P): Promise<T> => {
+    console.log(`[Mock Worker] Running task: ${taskName}`, payload);
+    if (taskName === 'format-prompt') {
+        const prompt = payload as SystemPrompt;
+        let instruction = `**PERSONA:**\n${prompt.persona}\n\n`;
+        if (prompt.rules && prompt.rules.length > 0) {
+            const validRules = prompt.rules.filter(rule => rule && rule.trim() !== '');
+            if (validRules.length > 0) {
+                instruction += `**RULES:**\n${validRules.map(rule => `- ${rule}`).join('\n')}\n\n`;
+            }
+        }
+        if (prompt.outputFormat) {
+            instruction += `**OUTPUT FORMAT:**\nYou must respond in ${prompt.outputFormat} format.\n\n`;
+        }
+        return instruction.trim() as T;
+    }
+    return Promise.reject(new Error(`Mock worker does not support task: ${taskName}`));
+  }
+});
 
-// Services and Utilities
-import { streamContent } from '@/services/aiService'; // Assumes this now points to the BFF/GraphQL layer
-import { downloadJson } from '@/services/fileUtils';
+// Mock for downloadJson utility as it might be in a broken/unreachable file.
+const downloadJson = (data: object, filename: string) => {
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+};
 
-// Types
-import type { SystemPrompt, ChatMessage } from '@/types';
-import { MarkdownRenderer } from '../shared';
+// Placeholder UI components styled with TailwindCSS to replace the broken UI library dependencies.
+const Button: React.FC<React.ButtonHTMLAttributes<HTMLButtonElement> & { variant?: string, icon?: React.ReactNode, fullWidth?: boolean }> = ({ children, variant, icon, fullWidth, ...props }) => (
+    <button {...props} className={`flex items-center justify-center gap-2 px-4 py-2 rounded-md text-sm font-semibold transition-colors disabled:opacity-50 ${fullWidth ? 'w-full' : ''} ${variant === 'secondary' ? 'bg-surface border border-border hover:bg-gray-100 dark:hover:bg-slate-700' : variant === 'link' ? 'text-primary hover:underline' : 'btn-primary'}`}>
+        {icon}{children}
+    </button>
+);
+const IconButton: React.FC<React.ButtonHTMLAttributes<HTMLButtonElement> & { variant?: string, size?: string }> = ({ children, ...props }) => (
+    <button {...props} className="p-1 rounded-full hover:bg-gray-200 dark:hover:bg-slate-700 transition-colors">{children}</button>
+);
+const Input: React.FC<React.InputHTMLAttributes<HTMLInputElement>> = (props) => <input {...props} className={`w-full bg-background border border-border px-3 py-2 rounded-md text-sm focus:ring-2 focus:ring-primary focus:outline-none ${props.className}`} />;
+const TextArea: React.FC<React.TextareaHTMLAttributes<HTMLTextAreaElement>> = (props) => <textarea {...props} className={`w-full bg-background border border-border px-3 py-2 rounded-md text-sm focus:ring-2 focus:ring-primary focus:outline-none ${props.className}`} />;
+const Select: React.FC<React.SelectHTMLAttributes<HTMLSelectElement>> = ({ children, ...props }) => <select {...props} className={`w-full bg-background border border-border px-3 py-2 rounded-md text-sm focus:ring-2 focus:ring-primary focus:outline-none ${props.className}`}>{children}</select>;
 
-// Constants
+const Card: React.FC<{ children: React.ReactNode, className?: string }> & { Header: React.FC<{ children: React.ReactNode }>, Title: React.FC<{ children: React.ReactNode }>, Content: React.FC<{ children: React.ReactNode, className?: string }>, Footer: React.FC<{ children: React.ReactNode }> } = ({ children, className }) => <div className={`bg-surface border border-border rounded-lg ${className}`}>{children}</div>;
+Card.Header = ({ children }) => <div className="p-4 border-b border-border">{children}</div>;
+Card.Title = ({ children }) => <h3 className="font-bold text-lg">{children}</h3>;
+Card.Content = ({ children, className }) => <div className={`p-4 ${className}`}>{children}</div>;
+Card.Footer = ({ children }) => <div className="p-4 border-t border-border">{children}</div>;
+
+const Layout: { Root: React.FC<{ children: React.ReactNode, className?: string }>, Content: React.FC<{ children: React.ReactNode }>, Grid: React.FC<{ children: React.ReactNode, cols?: number, gap?: string, className?: string }> } = {
+    Root: ({ children, className }) => <div className={`flex h-full ${className}`}>{children}</div>,
+    Content: ({ children }) => <main className="flex-1 h-full overflow-hidden">{children}</main>,
+    Grid: ({ children, cols = 1, gap = '4', className }) => <div className={`grid grid-cols-${cols} gap-${gap} h-full ${className}`}>{children}</div>
+};
+
+const Sidebar: React.FC<{ children: React.ReactNode }> & { Header: React.FC<{ children: React.ReactNode }>, Content: React.FC<{ children: React.ReactNode }>, Footer: React.FC<{ children: React.ReactNode }>, Item: React.FC<{ children: React.ReactNode, isActive?: boolean, onClick: () => void, actions?: React.ReactNode }> } = ({ children }) => <aside className="w-72 h-full bg-surface border-r border-border flex flex-col">{children}</aside>;
+Sidebar.Header = ({ children }) => <div className="p-4 border-b border-border flex-shrink-0">{children}</div>;
+Sidebar.Content = ({ children }) => <div className="flex-grow p-2 space-y-1 overflow-y-auto">{children}</div>;
+Sidebar.Footer = ({ children }) => <div className="p-4 border-t border-border flex-shrink-0">{children}</div>;
+Sidebar.Item = ({ children, isActive, onClick, actions }) => (
+    <div onClick={onClick} className={`group flex items-center justify-between p-2 rounded-md cursor-pointer ${isActive ? 'bg-primary/10 text-primary font-semibold' : 'hover:bg-gray-100 dark:hover:bg-slate-700'}`}>
+        <div className="flex-grow truncate">{children}</div>
+        <div className="flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">{actions}</div>
+    </div>
+);
+
+// --- End of Mocks/Placeholders ---
+
 const DEFAULT_NEW_PROMPT: Omit<SystemPrompt, 'id' | 'name'> = {
     persona: 'You are a helpful assistant.',
     rules: [],
@@ -49,10 +104,6 @@ const DEFAULT_NEW_PROMPT: Omit<SystemPrompt, 'id' | 'name'> = {
     exampleIO: [],
 };
 
-/**
- * @interface PersonalityListProps
- * @description Props for the PersonalityList component.
- */
 interface PersonalityListProps {
     personalities: SystemPrompt[];
     activeId: string | null;
@@ -63,18 +114,6 @@ interface PersonalityListProps {
     onExport: () => void;
 }
 
-/**
- * Renders the sidebar list of AI personalities and management controls.
- * @param {PersonalityListProps} props - The component props.
- * @returns {React.ReactElement} The rendered sidebar component.
- * @example
- * <PersonalityList
- *   personalities={personalities}
- *   activeId={activeId}
- *   onSelect={setActiveId}
- *   // ... other handlers
- * />
- */
 const PersonalityList: React.FC<PersonalityListProps> = ({ personalities, activeId, onSelect, onDelete, onAddNew, onImport, onExport }) => {
     const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -91,8 +130,6 @@ const PersonalityList: React.FC<PersonalityListProps> = ({ personalities, active
                         onClick={() => onSelect(p.id)}
                         actions={
                             <IconButton
-                                variant="ghost"
-                                size="sm"
                                 onClick={(e) => { e.stopPropagation(); onDelete(p.id); }}
                                 aria-label={`Delete ${p.name}`}
                             >
@@ -122,60 +159,50 @@ const PersonalityList: React.FC<PersonalityListProps> = ({ personalities, active
     );
 };
 
-/**
- * @interface PersonalityEditorProps
- * @description Props for the PersonalityEditor component.
- */
 interface PersonalityEditorProps {
     personality: SystemPrompt;
     onUpdate: (field: keyof SystemPrompt, value: any) => void;
 }
 
-/**
- * Renders the form for editing the properties of an AI personality.
- * @param {PersonalityEditorProps} props - The component props.
- * @returns {React.ReactElement} The rendered editor form.
- * @performance This component uses multiple controlled inputs. For very large rule/example sets, virtualization could be considered.
- */
 const PersonalityEditor: React.FC<PersonalityEditorProps> = ({ personality, onUpdate }) => {
     return (
-        <Card className="flex flex-col h-full">
+        <Card className="flex flex-col h-full !border-0 !shadow-none !bg-transparent">
             <Card.Header>
                 <Card.Title>Personality Editor</Card.Title>
             </Card.Header>
-            <Card.Content className="flex-grow overflow-y-auto space-y-4">
+            <Card.Content className="flex-grow overflow-y-auto space-y-4 !p-0 pr-2">
                 <div>
-                    <label className="font-bold text-sm">Name</label>
+                    <label className="font-bold text-sm mb-1 block">Name</label>
                     <Input
                         value={personality.name}
                         onChange={e => onUpdate('name', e.target.value)}
-                        className="w-full mt-1"
+                        className="w-full"
                     />
                 </div>
                 <div>
-                    <label className="font-bold text-sm">Persona</label>
+                    <label className="font-bold text-sm mb-1 block">Persona</label>
                     <TextArea
                         value={personality.persona}
                         onChange={e => onUpdate('persona', e.target.value)}
-                        className="w-full mt-1 h-24"
+                        className="w-full h-24"
                         placeholder="Describe the AI's core identity and purpose."
                     />
                 </div>
                 <div>
-                    <label className="font-bold text-sm">Rules (one per line)</label>
+                    <label className="font-bold text-sm mb-1 block">Rules (one per line)</label>
                     <TextArea
                         value={personality.rules.join('\n')}
                         onChange={e => onUpdate('rules', e.target.value.split('\n'))}
-                        className="w-full mt-1 h-32 font-mono"
-                        placeholder="- Rule 1&#10;- Rule 2"
+                        className="w-full h-32 font-mono"
+                        placeholder="- Rule 1\n- Rule 2"
                     />
                 </div>
                 <div>
-                    <label className="font-bold text-sm">Output Format</label>
+                    <label className="font-bold text-sm mb-1 block">Output Format</label>
                     <Select
                         value={personality.outputFormat}
-                        onValueChange={(value) => onUpdate('outputFormat', value)}
-                        className="w-full mt-1"
+                        onChange={(e) => onUpdate('outputFormat', e.target.value)}
+                        className="w-full"
                     >
                         <option value="markdown">Markdown</option>
                         <option value="json">JSON</option>
@@ -187,13 +214,13 @@ const PersonalityEditor: React.FC<PersonalityEditorProps> = ({ personality, onUp
                     {personality.exampleIO.map((ex, i) => (
                         <div key={i} className="grid grid-cols-2 gap-2 mb-2 p-2 border border-border rounded bg-background">
                             <TextArea
-                                placeholder="User Input"
+                                placeholder={`User Input ${i + 1}`}
                                 value={ex.input}
                                 onChange={e => onUpdate('exampleIO', personality.exampleIO.map((item, idx) => idx === i ? { ...item, input: e.target.value } : item))}
                                 className="h-20"
                             />
                             <TextArea
-                                placeholder="Model Output"
+                                placeholder={`Model Output ${i + 1}`}
                                 value={ex.output}
                                 onChange={e => onUpdate('exampleIO', personality.exampleIO.map((item, idx) => idx === i ? { ...item, output: e.target.value } : item))}
                                 className="h-20"
@@ -209,21 +236,10 @@ const PersonalityEditor: React.FC<PersonalityEditorProps> = ({ personality, onUp
     );
 };
 
-/**
- * @interface TestbedProps
- * @description Props for the Testbed component.
- */
 interface TestbedProps {
     personality: SystemPrompt;
 }
 
-/**
- * Renders the chat interface for live testing of an AI personality.
- * @param {TestbedProps} props - The component props.
- * @returns {React.ReactElement} The rendered testbed.
- * @security The MarkdownRenderer processes AI-generated content. Ensure proper sanitization is active.
- * @performance Communication with the web worker adds a small overhead but keeps the main thread free during prompt construction.
- */
 const Testbed: React.FC<TestbedProps> = ({ personality }) => {
     const [testbedInput, setTestbedInput] = useState('');
     const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
@@ -239,10 +255,7 @@ const Testbed: React.FC<TestbedProps> = ({ personality }) => {
         setIsStreaming(true);
 
         try {
-            // Offload prompt construction to a web worker
-            const systemInstruction = await workerPool.submitTask<string>('format-prompt', personality);
-
-            // This call now represents an authenticated GraphQL request to the BFF
+            const systemInstruction = await workerPool.submitTask<string, SystemPrompt>('format-prompt', personality);
             const stream = streamContent(testbedInput, systemInstruction, 0.7);
 
             let fullResponse = '';
@@ -266,17 +279,16 @@ const Testbed: React.FC<TestbedProps> = ({ personality }) => {
         }
     };
     
-    // Clear chat history when personality changes
     useEffect(() => {
         setChatHistory([]);
     }, [personality.id]);
 
     return (
-        <Card className="flex flex-col h-full">
+        <Card className="flex flex-col h-full !border-0 !shadow-none !bg-transparent">
             <Card.Header>
                 <Card.Title>Live Testbed</Card.Title>
             </Card.Header>
-            <Card.Content className="flex-grow overflow-y-auto space-y-4">
+            <Card.Content className="flex-grow overflow-y-auto space-y-4 pr-2">
                 {chatHistory.map((msg, i) => (
                     <div key={i} className={`p-3 rounded-lg ${msg.role === 'user' ? 'bg-primary/10' : 'bg-surface'}`}>
                         <strong className="capitalize text-sm font-bold">{msg.role}</strong>
@@ -306,15 +318,6 @@ const Testbed: React.FC<TestbedProps> = ({ personality }) => {
     );
 };
 
-/**
- * The main component for the AI Personality Forge feature. It orchestrates the display
- * and management of AI personalities, combining the list, editor, and testbed components.
- *
- * @component
- * @returns {React.ReactElement | null} The rendered AiPersonalityForge component.
- * @example
- * <AiPersonalityForge />
- */
 export const AiPersonalityForge: React.FC = () => {
     const [personalities, setPersonalities] = useAiPersonalities();
     const [activeId, setActiveId] = useState<string | null>(null);
@@ -369,7 +372,6 @@ export const AiPersonalityForge: React.FC = () => {
         reader.onload = (event) => {
             try {
                 const imported = JSON.parse(event.target?.result as string) as SystemPrompt;
-                // Basic validation
                 if (imported.id && imported.name && imported.persona) {
                     setPersonalities(prev => [...prev.filter(p => p.id !== imported.id), imported]);
                     setActiveId(imported.id);
@@ -398,19 +400,20 @@ export const AiPersonalityForge: React.FC = () => {
             <Layout.Content>
                 {activePersonality ? (
                     <Layout.Grid cols={2} gap="px" className="bg-border">
-                        <div className="bg-background p-4 overflow-y-auto">
+                        <div className="bg-background p-4 h-full overflow-y-auto">
                             <PersonalityEditor personality={activePersonality} onUpdate={handleUpdate} />
                         </div>
-                        <div className="bg-background p-4 overflow-y-auto">
+                        <div className="bg-background p-4 h-full overflow-y-auto">
                             <Testbed personality={activePersonality} />
                         </div>
                     </Layout.Grid>
                 ) : (
-                    <div className="flex-1 flex items-center justify-center text-text-secondary">
+                    <div className="flex h-full items-center justify-center text-text-secondary">
                         Select or create a personality to begin.
                     </div>
                 )}
             </Layout.Content>
         </Layout.Root>
     );
+};
 };

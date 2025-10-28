@@ -7,16 +7,23 @@
  * @version 2.0.0
  */
 
-import React, { useReducer, useCallback, useRef, useEffect } from 'react';
+import React, { useReducer, useCallback, useEffect } from 'react';
 
-// Proprietary UI Framework Imports
-import { Panel, Layout, Typography, Button, Icon, FileUploadZone } from 'ui/core';
-import { CodeViewer, LoadingState } from 'ui/composite';
+// Proprietary UI Framework Imports (conceptual)
+import { Panel } from '../../ui_framework/Panel';
+import { Layout } from '../../ui_framework/Layout';
+import { Typography } from '../../ui_framework/Typography';
+import { Button } from '../../ui_framework/Button';
+import { Icon } from '../../ui_framework/Icon';
+import { FileUploadZone } from '../../ui_framework/FileUploadZone';
+import { CodeViewer } from '../../ui_framework/CodeViewer';
+import { LoadingState } from '../../ui_framework/LoadingState';
+import { PhotoIcon, ArrowDownTrayIcon, ClipboardDocumentIcon } from '../icons';
 
 // Service Layer & Hooks for new architecture
-import { useWorkerPool } from 'hooks/useWorkerPool';
-import { useNotification } from 'contexts/NotificationContext';
-import { downloadFile } from 'services/infrastructure/fileUtilsAdapter';
+import { useWorkerPool } from '../../hooks/useWorkerPool'; // Assumes a hook for worker interaction
+import { useNotification } from '../../contexts/NotificationContext';
+import { downloadFile } from '../../services/fileUtils';
 
 /**
  * @typedef {'idle' | 'processingImage' | 'streamingCode' | 'success' | 'error'}
@@ -93,7 +100,7 @@ export const ScreenshotToComponent: React.FC = () => {
     if (!worker) return;
 
     const handleMessage = (event: MessageEvent) => {
-      const { type, payload } = event.data;
+      const { type, payload, error } = event.data;
       switch (type) {
         case 'COMPONENT_STREAM_CHUNK':
           dispatch({ type: 'STREAM_CHUNK', payload });
@@ -103,7 +110,7 @@ export const ScreenshotToComponent: React.FC = () => {
           addNotification('Code generation complete!', 'success');
           break;
         case 'COMPONENT_GENERATION_ERROR':
-          dispatch({ type: 'ERROR', payload });
+          dispatch({ type: 'ERROR', payload: error });
           addNotification('Code generation failed.', 'error');
           break;
       }
@@ -129,6 +136,7 @@ export const ScreenshotToComponent: React.FC = () => {
     const previewUrl = URL.createObjectURL(file);
     dispatch({ type: 'START_PROCESSING', payload: { previewImage: previewUrl } });
 
+    // The worker handles Base64 conversion and BFF communication
     worker.postMessage({ 
       type: 'GENERATE_COMPONENT_FROM_IMAGE', 
       payload: { file } 
@@ -142,11 +150,18 @@ export const ScreenshotToComponent: React.FC = () => {
       addNotification('Component code downloaded.', 'info');
     }
   }, [state.generatedCode, addNotification]);
+  
+  const handleCopy = useCallback(() => {
+    if (state.generatedCode) {
+      navigator.clipboard.writeText(state.generatedCode);
+      addNotification('Code copied to clipboard!', 'success');
+    }
+  }, [state.generatedCode, addNotification]);
 
   return (
-    <Panel className="h-full flex flex-col">
+    <Panel className="h-full flex flex-col p-4 sm:p-6 lg:p-8">
       <Panel.Header>
-        <Icon name="PhotoIcon" />
+        <Icon as={PhotoIcon} />
         <Typography.Title>AI Screenshot-to-Component</Typography.Title>
         <Typography.Text subtle>Paste or upload a UI screenshot to generate React/Tailwind code.</Typography.Text>
       </Panel.Header>
@@ -161,7 +176,7 @@ export const ScreenshotToComponent: React.FC = () => {
             {state.previewImage ? (
               <img src={state.previewImage} alt="UI Screenshot Preview" className="max-w-full max-h-full object-contain rounded-md shadow-lg" />
             ) : (
-              <div className="text-center">
+              <div className="text-center text-text-secondary">
                 <Typography.Header level={2}>Paste an image here</Typography.Header>
                 <Typography.Text subtle>(Cmd/Ctrl + V) or click to upload</Typography.Text>
               </div>
@@ -174,8 +189,8 @@ export const ScreenshotToComponent: React.FC = () => {
             <Typography.Text as="label" className="font-medium">Generated Code</Typography.Text>
             {state.generatedCode && state.status === 'success' && (
               <div className="flex items-center gap-2">
-                <Button variant="secondary" size="small" onClick={() => { navigator.clipboard.writeText(state.generatedCode); addNotification('Code copied!', 'info'); }}>Copy Code</Button>
-                <Button variant="secondary" size="small" icon={<Icon name="ArrowDownTrayIcon" />} onClick={handleDownload}>Download</Button>
+                <Button variant="secondary" size="small" onClick={handleCopy} icon={<Icon as={ClipboardDocumentIcon} />}>Copy</Button>
+                <Button variant="secondary" size="small" icon={<Icon as={ArrowDownTrayIcon} />} onClick={handleDownload}>Download</Button>
               </div>
             )}
           </div>
@@ -183,8 +198,8 @@ export const ScreenshotToComponent: React.FC = () => {
             {(state.status === 'processingImage' || state.status === 'streamingCode') && !state.error && (
               <LoadingState message={state.status === 'processingImage' ? 'Processing image...' : 'Generating code...'} />
             )}
-            {state.error && (
-              <Panel.ErrorState title="Generation Failed" message={state.error} />
+            {state.status === 'error' && (
+              <Panel.ErrorState title="Generation Failed" message={state.error || 'An unknown error occurred.'} />
             )}
             {state.generatedCode && (
               <CodeViewer code={state.generatedCode} language="tsx" />
@@ -195,6 +210,11 @@ export const ScreenshotToComponent: React.FC = () => {
           </div>
         </Layout.Column>
       </Panel.Body>
+      {(state.status === 'success' || state.status === 'error') && (
+        <Panel.Footer>
+            <Button onClick={() => dispatch({ type: 'RESET' })} variant="primary" fullWidth>Start New Generation</Button>
+        </Panel.Footer>
+      )}
     </Panel>
   );
 };

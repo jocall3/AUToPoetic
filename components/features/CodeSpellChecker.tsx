@@ -13,16 +13,15 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 
-// Assuming new UI framework components from proprietary libraries
-import { Button, Container, Header, Text, Title } from 'ui/core';
-import { CodeEditor, LoadingSpinner } from 'ui/composite';
-import { BeakerIcon, SparklesIcon } from '../icons.tsx';
+// Aligned imports with the new architectural directives and UI framework
+import { Box, Grid, Typography, Button, Card, CardHeader, CardContent, Spinner } from '@/ui/core';
+import { CodeEditor } from '@/ui/composite';
+import { BeakerIcon, SparklesIcon } from '@/components/icons';
 
-// Assuming a hook to interact with the WorkerPoolManager service
-import { useWorker } from 'hooks/useWorker.ts';
-// Assuming a hook for GraphQL calls to the BFF
-import { useBff } from 'hooks/useBff.ts';
-import { useNotification } from 'contexts/NotificationContext.tsx';
+// Hooks for services and context
+import { useWorker } from '@/hooks/useWorker';
+import { useBff } from '@/hooks/useBff';
+import { useNotification } from '@/contexts/NotificationContext';
 
 /**
  * @interface Typo
@@ -79,18 +78,8 @@ export const CodeSpellChecker: React.FC = () => {
     const [loadingSuggestion, setLoadingSuggestion] = useState<number | null>(null);
 
     const { addNotification } = useNotification();
-    const { post: postToWorker, isLoading: isWorkerProcessing } = useWorker<SpellCheckWorkerRequest, SpellCheckWorkerResponse>('spellCheckWorker.js');
     const { query: queryBff } = useBff();
 
-    const debounceTimeout = useRef<NodeJS.Timeout | null>(null);
-
-    /**
-     * @function handleWorkerMessage
-     * @description Callback to handle messages received from the spell-check worker.
-     * Updates the component's state with the detected typos.
-     * @param {MessageEvent<SpellCheckWorkerResponse>} event - The message event from the worker.
-     * @performance Updates state in a single call to avoid multiple re-renders.
-     */
     const handleWorkerMessage = useCallback((event: MessageEvent<SpellCheckWorkerResponse>) => {
         if (event.data.type === 'SPELL_CHECK_RESULT') {
             const detectedTypos = event.data.payload.typos;
@@ -106,44 +95,24 @@ export const CodeSpellChecker: React.FC = () => {
         }
     }, []);
 
-    // This effect establishes the worker and the message handler.
+    const { post: postToWorker, isLoading: isWorkerProcessing } = useWorker<SpellCheckWorkerRequest, SpellCheckWorkerResponse>(
+        'spellCheckWorker.js',
+        handleWorkerMessage
+    );
+
     useEffect(() => {
         if (!postToWorker) return;
-        const workerInstance = postToWorker({ type: 'SPELL_CHECK', payload: { code } }, handleWorkerMessage, true);
-        return () => workerInstance?.terminate();
-    }, [postToWorker, handleWorkerMessage, code]);
 
-    /**
-     * @function triggerSpellCheck
-     * @description Sends the current code to the web worker for spell checking.
-     * This function is debounced to avoid overwhelming the worker during rapid typing.
-     * @param {string} currentCode The code to be checked.
-     */
-    const triggerSpellCheck = useCallback((currentCode: string) => {
-        if (debounceTimeout.current) {
-            clearTimeout(debounceTimeout.current);
-        }
-        debounceTimeout.current = setTimeout(() => {
-            postToWorker({ type: 'SPELL_CHECK', payload: { code: currentCode } });
-        }, 500); // 500ms debounce delay
-    }, [postToWorker]);
+        const handler = setTimeout(() => {
+            postToWorker({ type: 'SPELL_CHECK', payload: { code } });
+        }, 500); // Debounce to avoid excessive checks while typing
 
-    // Effect to trigger spell check when code changes.
-    useEffect(() => {
-        triggerSpellCheck(code);
-    }, [code, triggerSpellCheck]);
+        return () => clearTimeout(handler);
+    }, [code, postToWorker]);
 
-    /**
-     * @function handleSuggestFix
-     * @description Fetches an AI-powered correction suggestion for a specific typo from the BFF.
-     * @param {Typo} typo - The typo object for which to get a suggestion.
-     * @security The typo and surrounding code context are sent to the BFF, which then communicates
-     * with the AI service. The client never communicates directly with the AI.
-     */
     const handleSuggestFix = useCallback(async (typo: Typo) => {
         setLoadingSuggestion(typo.index);
         try {
-            // GraphQL query to the BFF
             const response = await queryBff(`
                 query SuggestTypoFix($word: String!, $context: String!) {
                     suggestTypoFix(word: $word, context: $context) {
@@ -168,13 +137,18 @@ export const CodeSpellChecker: React.FC = () => {
     }, [code, queryBff, addNotification]);
 
     return (
-        <Container fullHeight={true} className="p-4 sm:p-6 lg:p-8">
-            <Header>
-                <Title icon={<BeakerIcon />}>Code Spell Checker</Title>
-                <Text variant="secondary">Finds common typos in code and suggests AI-powered fixes.</Text>
-            </Header>
-            <div className="flex-grow grid grid-cols-1 lg:grid-cols-3 gap-6 min-h-0">
-                <div className="lg:col-span-2 flex flex-col min-h-0">
+        <Box className="p-4 sm:p-6 lg:p-8 h-full flex flex-col">
+            <header className="mb-6">
+                <Typography as="h1" variant="h1" className="flex items-center">
+                    <BeakerIcon />
+                    <span className="ml-3">Code Spell Checker</span>
+                </Typography>
+                <Typography variant="subtitle1" color="secondary">
+                    Finds common typos in code and suggests AI-powered fixes.
+                </Typography>
+            </header>
+            <Grid container spacing={3} className="flex-grow min-h-0">
+                <Grid item xs={12} md={8} className="flex flex-col min-h-0">
                     <CodeEditor
                         value={code}
                         onChange={setCode}
@@ -182,49 +156,51 @@ export const CodeSpellChecker: React.FC = () => {
                         highlights={highlights}
                         showLineNumbers={true}
                     />
-                </div>
-                <div className="lg:col-span-1 flex flex-col bg-surface border border-border rounded-lg">
-                    <Header className="p-4 border-b border-border">
-                        <Title as="h3" className="text-lg">Detected Typos ({typos.length})</Title>
-                    </Header>
-                    <div className="flex-grow overflow-y-auto p-4 space-y-3">
-                        {isWorkerProcessing && typos.length === 0 && (
-                            <div className="flex justify-center items-center h-full">
-                                <LoadingSpinner />
-                            </div>
-                        )}
-                        {!isWorkerProcessing && typos.length === 0 && (
-                            <Text variant="secondary" className="text-center pt-8">No typos found. Keep up the good work!</Text>
-                        )}
-                        {typos.map((typo) => (
-                            <div key={typo.index} className="p-3 bg-background rounded-md border border-border">
-                                <div className="flex justify-between items-start">
-                                    <div>
-                                        <p className="font-mono text-red-500 font-bold">{typo.value}</p>
-                                        <Text variant="secondary" size="sm">Line: {typo.line}</Text>
-                                    </div>
-                                    <Button
-                                        variant="secondary"
-                                        size="sm"
-                                        onClick={() => handleSuggestFix(typo)}
-                                        loading={loadingSuggestion === typo.index}
-                                        icon={<SparklesIcon />}
-                                    >
-                                        Suggest Fix
-                                    </Button>
-                                </div>
-                                {suggestions[typo.index] && (
-                                    <div className="mt-2 pt-2 border-t border-border">
-                                        <Text size="sm">
-                                            <strong>Suggestion:</strong> <span className="font-mono text-green-600">{suggestions[typo.index]}</span>
-                                        </Text>
-                                    </div>
-                                )}
-                            </div>
-                        ))}
-                    </div>
-                </div>
-            </div>
-        </Container>
+                </Grid>
+                <Grid item xs={12} md={4} className="flex flex-col min-h-0">
+                    <Card className="flex flex-col h-full">
+                        <CardHeader>
+                            <Typography as="h3" variant="h3">Detected Typos ({typos.length})</Typography>
+                        </CardHeader>
+                        <CardContent className="flex-grow overflow-y-auto p-4 space-y-3">
+                            {isWorkerProcessing && typos.length === 0 && (
+                                <Box className="flex justify-center items-center h-full">
+                                    <Spinner />
+                                </Box>
+                            )}
+                            {!isWorkerProcessing && typos.length === 0 && (
+                                <Typography color="secondary" className="text-center pt-8">No typos found. Keep up the good work!</Typography>
+                            )}
+                            {typos.map((typo) => (
+                                <Box key={typo.index} className="p-3 bg-background rounded-md border border-border">
+                                    <Box className="flex justify-between items-start">
+                                        <Box>
+                                            <Typography as="p" className="font-mono text-red-500 font-bold">{typo.value}</Typography>
+                                            <Typography color="secondary" variant="caption">Line: {typo.line}</Typography>
+                                        </Box>
+                                        <Button
+                                            variant="secondary"
+                                            size="sm"
+                                            onClick={() => handleSuggestFix(typo)}
+                                            isLoading={loadingSuggestion === typo.index}
+                                            icon={<SparklesIcon />}
+                                        >
+                                            Suggest Fix
+                                        </Button>
+                                    </Box>
+                                    {suggestions[typo.index] && (
+                                        <Box className="mt-2 pt-2 border-t border-border">
+                                            <Typography variant="body2">
+                                                <strong>Suggestion:</strong> <span className="font-mono text-green-600">{suggestions[typo.index]}</span>
+                                            </Typography>
+                                        </Box>
+                                    )}
+                                </Box>
+                            ))}
+                        </CardContent>
+                    </Card>
+                </Grid>
+            </Grid>
+        </Box>
     );
 };

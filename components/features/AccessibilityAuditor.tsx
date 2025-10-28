@@ -17,16 +17,14 @@ import React, { useState, useRef, useCallback } from 'react';
 import type { AxeResults, Violation } from 'axe-core';
 
 // Core service for running the accessibility audit on the client-side.
-import { runAxeAudit } from '../../services/auditing/accessibilityService.ts';
+import { runAxeAudit } from '../../services/auditing/accessibilityService';
 
 // Core UI components from the new proprietary UI framework.
-// Note: These are conceptual imports representing the target architecture.
-import { EyeIcon, SparklesIcon } from '../icons.tsx';
-import { LoadingSpinner } from '../shared/LoadingSpinner.tsx';
-import { MarkdownRenderer } from '../shared/MarkdownRenderer.tsx';
+import { EyeIcon, SparklesIcon } from '../icons';
+import { LoadingSpinner, MarkdownRenderer } from './shared';
 
 // Contexts for application-wide services like notifications.
-import { useNotification } from '../../contexts/NotificationContext.tsx';
+import { useNotification } from '../../contexts/NotificationContext';
 
 /**
  * Simulates a call to the Backend-for-Frontend (BFF) using a GraphQL-like structure.
@@ -47,13 +45,7 @@ const callBff = async (mutation: string, variables: Record<string, any>): Promis
         const issue = variables.issue as Violation;
         return {
             data: {
-                suggestA11yFix: `### Suggested Fix for **${issue.id}**\n\n**Problem:** ${issue.help}\n\n**Recommendation:** To resolve this issue, you should modify the affected element(\`s\`) located by the selector 
-
-\
-\
-**Example Code:**\n\
-\
-This is a mocked AI suggestion to demonstrate the flow. The AI would provide a concrete code example here.`
+                suggestA11yFix: `### Suggested Fix for **${issue.id}**\n\n**Problem:** ${issue.help}\n\n**Recommendation:** To resolve this issue, you should modify the affected element(s) located by the selector: \`${issue.nodes.map(n => n.target.join(', ')).join('; ')}\`.\n\n**Example Code:**\n\`\`\`html\n<!-- An AI-generated code example would appear here. -->\n\`\`\`\nThis is a mocked AI suggestion to demonstrate the flow.`
             }
         };
     }
@@ -174,41 +166,32 @@ export const AccessibilityAuditor: React.FC = () => {
 
     // Using CSS classes to represent layout components from a hypothetical UI library.
     return (
-        // <VStack className="h-full p-4 sm:p-6 lg:p-8"> from @core-ui/Stack
         <div className="h-full flex flex-col p-4 sm:p-6 lg:p-8 text-text-primary gap-6">
             <header>
                 <h1 className="text-3xl font-bold flex items-center"><EyeIcon /><span className="ml-3">Automated Accessibility Auditor</span></h1>
                 <p className="text-text-secondary mt-1">Audit a live URL for accessibility issues and get AI-powered fixes.</p>
             </header>
 
-            {/* <HStack> from @core-ui/Stack */}
             <div className="flex gap-2">
-                {/* <Input> from @core-ui/Input */}
                 <input type="text" value={url} onChange={e => setUrl(e.target.value)} placeholder="https://example.com" className="flex-grow p-2 bg-surface border border-border rounded-md" />
-                {/* <Button> from @core-ui/Button */}
                 <button onClick={handleAudit} disabled={isLoading} className="btn-primary px-6 py-2 min-w-[100px] flex justify-center items-center">{isLoading ? <LoadingSpinner/> : 'Audit'}</button>
             </div>
 
             <div className="flex-grow grid grid-cols-1 lg:grid-cols-2 gap-6 min-h-0">
-                {/* <Card> from @composite-ui/Card */}
                 <div className="bg-background border-2 border-dashed border-border rounded-lg overflow-hidden flex flex-col">
                     <div className="flex-shrink-0 p-2 border-b border-border bg-surface text-xs text-text-secondary truncate">{auditUrl || 'No URL loaded'}</div>
-                    {/* <IFrame> from @core-ui/IFrame */}
                     <iframe ref={iframeRef} src={auditUrl} title="Audit Target" className="w-full h-full bg-white" onLoad={handleIframeLoad} sandbox="allow-scripts allow-same-origin"/>
                 </div>
                 
-                {/* <Card> from @composite-ui/Card */}
                 <div className="bg-surface p-4 border border-border rounded-lg flex flex-col">
                     <h3 className="text-lg font-bold mb-2">Audit Results</h3>
                     <div className="flex-grow overflow-y-auto pr-2 space-y-3">
                         {isLoading && <div className="flex justify-center items-center h-full"><LoadingSpinner/></div>}
                         {results && results.violations.length === 0 && !isLoading && <p className="text-center text-text-secondary py-10">No violations found!</p>}
                         {results && (results.violations as AuditedViolation[]).map((violation, i) => (
-                            // <Card.Section> from @composite-ui/Card
                             <div key={`${violation.id}-${violation.nodes[0]?.target?.join(',')}`} className="p-3 bg-background border border-border rounded-md">
                                 <p className="font-bold text-red-500">{violation.help}</p>
                                 <p className="text-sm my-1 text-text-secondary">{violation.description}</p>
-                                {/* <Button variant="link"> from @core-ui/Button */}
                                 <button onClick={() => handleGetFix(violation, i)} disabled={violation.isFixLoading} className="text-xs flex items-center gap-1 text-primary font-semibold disabled:opacity-50">
                                     {violation.isFixLoading ? <LoadingSpinner/> : <SparklesIcon/>}
                                     {violation.isFixLoading ? 'Getting fix...' : 'Ask AI for a fix'}

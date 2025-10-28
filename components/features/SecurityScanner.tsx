@@ -12,7 +12,7 @@
 
 import React, { useState, useCallback } from 'react';
 
-// Core UI components from the new abstracted UI framework
+// Conceptual imports from the new abstracted UI framework and service layers
 import { Page } from '@core/ui/Page';
 import { Grid } from '@core/ui/Grid';
 import { Card } from '@core/ui/Card';
@@ -24,7 +24,6 @@ import { Spinner } from '@core/ui/Spinner';
 import { Markdown } from '@core/ui/Markdown';
 import { Icon } from '@core/ui/Icon';
 
-// Service layer hooks and types
 import { useWorkerPool } from '@services/worker/useWorkerPool';
 import { useAnalyzeVulnerabilitiesMutation } from '@services/bff/securityHooks';
 import type { SecurityIssue, SecurityVulnerability } from '@domain/models/security';
@@ -153,7 +152,7 @@ export const SecurityScanner: React.FC = () => {
       />
       <Page.Content>
         <Grid cols={1} lgCols={2} gap={6} className="h-full">
-          <Column className="flex flex-col">
+          <div className="flex flex-col">
             <TextArea
               label="Code to Scan"
               value={code}
@@ -164,8 +163,8 @@ export const SecurityScanner: React.FC = () => {
             <Button onClick={handleScan} isLoading={isScanning} className="mt-4 w-full">
               Scan Code
             </Button>
-          </Column>
-          <Column className="flex flex-col">
+          </div>
+          <div className="flex flex-col">
             <Card className="flex-grow flex flex-col">
               <Card.Header>Scan Results</Card.Header>
               <Card.Content className="flex-grow overflow-y-auto">
@@ -231,7 +230,7 @@ export const SecurityScanner: React.FC = () => {
                 )}
               </Card.Content>
             </Card>
-          </Column>
+          </div>
         </Grid>
       </Page.Content>
     </Page>

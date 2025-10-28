@@ -81,14 +81,12 @@ const mockCompilerService = {
             resolve({ success: false, output: '', error: 'Simulated compilation error: Invalid syntax.' });
         } else {
             const css = options.code
-                .replace(/\$primary-color:/g, '/* $primary-color: */
-  --primary-color:')
+                .replace(/\$primary-color:/g, '/* $primary-color: */\n  --primary-color:')
                 .replace(/\$primary-color/g, 'var(--primary-color)')
                 .replace(/(\s|{)color:/g, '$1color:')
                 .replace(/font-size: (\$font-size) \* 1.5;/g, 'font-size: calc(16px * 1.5);')
                 .replace(/&/g, '')
-                .replace(/\s*}\s*}/g, '}
-');
+                .replace(/\s*}\s*}/g, '}\n');
             resolve({ success: true, output: `/* Compiled CSS (mock) */\n${css}` });
         }
       }, 800);

@@ -8,7 +8,7 @@
  * <ResponsiveTester />
  */
 
-import React, { useState, FormEvent } from 'react';
+import React, { useState, FormEvent, useCallback } from 'react';
 import { EyeIcon } from '../icons.tsx';
 
 /**
@@ -42,6 +42,12 @@ type ViewportSize = {
     height: number | string;
 };
 
+const RotateIcon: React.FC<{ className?: string }> = ({ className }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={`w-5 h-5 ${className}`}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0011.667 0l3.181-3.183m-4.991-2.691V5.25a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75" />
+    </svg>
+);
+
 /**
  * Renders the Responsive Tester feature component, allowing users to preview
  * websites at different viewport sizes.
@@ -58,50 +64,49 @@ export const ResponsiveTester: React.FC = () => {
      * @param {FormEvent<HTMLFormElement>} e - The form submission event.
      * @performance No significant performance impact. Triggers a re-render of the iframe by updating its `key`.
      */
-    const handleUrlSubmit = (e: FormEvent<HTMLFormElement>) => {
+    const handleUrlSubmit = useCallback((e: FormEvent<HTMLFormElement>) => {
         e.preventDefault();
         if (/^https?:\/\//.test(url)) {
             setDisplayUrl(url);
         } else {
             setDisplayUrl(`https://${url}`);
         }
-    };
+    }, [url]);
     
     /**
      * Sets the viewport size based on a selected device preset.
      * @param {keyof typeof devices} deviceName - The name of the device preset to apply.
-     * @security No security implications.
      */
-    const handleDeviceChange = (deviceName: keyof typeof devices) => {
+    const handleDeviceChange = useCallback((deviceName: keyof typeof devices) => {
         setSize(devices[deviceName]);
         setCurrentDevice(deviceName);
-    };
+    }, []);
 
     /**
      * Swaps the width and height of the viewport for orientation testing.
      * This does not apply to 'Auto' size.
      * @returns {void}
      */
-    const handleRotate = () => {
+    const handleRotate = useCallback(() => {
         if (typeof size.width === 'number' && typeof size.height === 'number') {
             setSize({ width: size.height, height: size.width });
             setCurrentDevice('Custom');
         }
-    };
+    }, [size]);
     
     /**
      * Updates a single dimension (width or height) of the viewport size from user input.
      * @param {'width' | 'height'} dimension - The dimension to update.
      * @param {string} value - The new value for the dimension from the input field.
      */
-    const handleDimensionChange = (dimension: 'width' | 'height', value: string) => {
+    const handleDimensionChange = useCallback((dimension: 'width' | 'height', value: string) => {
         const numericValue = parseInt(value, 10);
         setSize(prevSize => ({
             ...prevSize,
             [dimension]: isNaN(numericValue) ? '' : numericValue
         }));
         setCurrentDevice('Custom');
-    };
+    }, []);
 
     return (
         <div className="h-full flex flex-col p-4 sm:p-6 lg:p-8 text-text-primary bg-background">
@@ -154,11 +159,11 @@ export const ResponsiveTester: React.FC = () => {
                     </div>
                     <button 
                         onClick={handleRotate} 
-                        className="px-3 py-1 rounded-md text-sm bg-background hover:bg-gray-100 dark:hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed" 
+                        className="p-2 rounded-md text-sm bg-background hover:bg-gray-100 dark:hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed" 
                         title="Rotate"
                         disabled={typeof size.width !== 'number'}
                     >
-                        ðŸ”„
+                       <RotateIcon />
                     </button>
                 </div>
             </div>
@@ -174,7 +179,7 @@ export const ResponsiveTester: React.FC = () => {
                     }}
                 >
                     <iframe
-                        key={displayUrl}
+                        key={displayUrl} // Re-mount iframe when URL changes
                         src={displayUrl}
                         className="w-full h-full bg-white"
                         style={{ borderRadius: typeof size.width === 'number' ? '12px' : '0' }}

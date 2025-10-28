@@ -1,206 +1,128 @@
 /**
- * @file This service is the primary client-side interface for managing user authentication and API keys.
- * It handles user authentication via Google Sign-In and manages a user-provided Gemini API key in local storage.
+ * @file This service is the primary client-side interface for the new zero-trust authentication system.
  * @module services/authService
- * @security This service stores the Gemini API key in plaintext in localStorage. This is a security risk and is implemented only to fulfill a specific directive. In a production environment, API keys should never be stored on the client. They should be managed by a secure backend service (like an AuthGateway or BFF) and accessed via short-lived session tokens, as per the architectural directives.
+ * @description This service acts as a singleton wrapper around the `@devcore/auth-client` library.
+ * It is responsible for orchestrating the OIDC/OAuth2 authentication flow with the central `AuthGateway` microservice.
+ * It replaces previous direct-to-provider authentication methods (like `googleAuthService`) and insecure
+ * client-side secret management (`vaultService` for PATs).
+ *
+ * As per architectural directives, this service adheres to a zero-trust model:
+ * - It does NOT handle or store any long-lived secrets (e.g., GitHub PATs, API keys).
+ * - It initiates the OIDC Authorization Code Flow with PKCE, redirecting the user to the `AuthGateway`.
+ * - It handles the callback from the `AuthGateway` to exchange an authorization code for a short-lived JWT.
+ * - It manages the session JWT, providing it for authenticated requests to the Backend-for-Frontend (BFF).
+ * - It handles session termination by clearing local tokens and redirecting to the `AuthGateway`'s logout endpoint.
+ *
+ * @see {AuthClient} from '@devcore/auth-client' for the core implementation.
+ * @see The 'Implement a Zero-Trust Security Model' architectural directive.
+ * @security This service manages the application's session JWT. The JWT is stored in memory and session storage
+ *           for the duration of the browser session, which is more secure than local storage.
+ * @performance The service is lightweight. Most operations involve redirects or single, secure API calls to the AuthGateway.
  */
 
-import type { AppUser } from '../types';
+import { AuthClient, AuthState, AuthStateCallback, UserSession } from '@devcore/auth-client';
 import { logError, logEvent, measurePerformance } from './telemetryService';
 
-declare global {
-  const google: any;
-}
-
-// --- Configuration --- 
-const GOOGLE_CLIENT_ID = "555179712981-36hlicm8e2genhfo9iq1ufnp1n8cikt9.apps.googleusercontent.com";
-const GOOGLE_SCOPES = [
-    'openid',
-    'https://www.googleapis.com/auth/userinfo.profile',
-    'https://www.googleapis.com/auth/userinfo.email',
-].join(' ');
-const GEMINI_API_KEY_STORAGE_KEY = 'devcore_gemini_api_key';
-
-// --- Module-level State --- 
-
-let tokenClient: any;
-let currentUser: AppUser | null = null;
-let googleAccessToken: string | null = null;
-const listeners: Set<(user: AppUser | null) => void> = new Set();
-
 /**
- * Notifies all subscribed listeners of an authentication state change.
- * @param {AppUser | null} user The new user state.
+ * Configuration for the AuthClient.
+ * In a real application, these values would be loaded from environment variables.
  * @private
  */
-function _notifyListeners(user: AppUser | null) {
-    listeners.forEach(callback => {
-        try {
-            callback(user);
-        } catch (error) {
-            logError(error as Error, { context: 'authService._notifyListeners' });
-        }
-    });
-}
+const authConfig = {
+  authGatewayUrl: import.meta.env.VITE_AUTH_GATEWAY_URL || 'http://localhost:3001',
+  clientId: import.meta.env.VITE_OIDC_CLIENT_ID || 'devcore-client',
+  redirectUri: `${window.location.origin}/auth/callback`,
+  postLogoutRedirectUri: `${window.location.origin}/`,
+  scope: 'openid profile email offline_access',
+};
 
 /**
- * Fetches the user's Google profile information using an access token.
- * @param {string} accessToken The Google OAuth2 access token.
- * @returns {Promise<AppUser>} A promise that resolves with the application-specific user object.
- * @private
+ * The singleton instance of the AuthClient.
+ * This instance is exported and used throughout the application to manage authentication.
+ * @constant
  */
-async function _fetchGoogleUserProfile(accessToken: string): Promise<AppUser> {
-    return measurePerformance('auth._fetchGoogleUserProfile', async () => {
-        const response = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
-            headers: { Authorization: `Bearer ${accessToken}` },
-        });
-        if (!response.ok) {
-            throw new Error('Failed to fetch Google user profile.');
-        }
-        const profile = await response.json();
-        return {
-            uid: profile.sub,
-            displayName: profile.name,
-            email: profile.email,
-            photoURL: profile.picture,
-            tier: 'pro', // Default tier
-        };
-    });
-}
+export const authService = new AuthClient(authConfig);
 
 /**
- * Initializes the Google Authentication client.
- * @param {(user: AppUser | null) => void} onStateChange A callback function to be called when the auth state changes.
+ * A wrapper function to initiate the login process.
+ * This function redirects the user to the AuthGateway's login page.
+ * @returns {Promise<void>}
+ * @example
+ * import { signIn } from '@/services/authService';
+ * <button onClick={signIn}>Sign In</button>
  */
-export function initAuth(onStateChange: (user: AppUser | null) => void) {
-    onAuthStateChanged(onStateChange);
-    logEvent('auth_google_client_init_started');
+export const signIn = (): Promise<void> => {
+  logEvent('auth_signin_triggered');
+  return measurePerformance('auth.signIn', () => authService.login());
+};
+
+/**
+ * A wrapper function to handle the redirect from the AuthGateway after login.
+ * This should be called on the application's callback page (e.g., `/auth/callback`).
+ * @returns {Promise<UserSession>} A promise that resolves with the user's session information.
+ * @throws {Error} If the callback handling fails (e.g., invalid state, code exchange error).
+ */
+export const handleAuthCallback = (): Promise<UserSession> => {
+  logEvent('auth_callback_handling_started');
+  return measurePerformance('auth.handleAuthCallback', async () => {
     try {
-        tokenClient = google.accounts.oauth2.initTokenClient({
-            client_id: GOOGLE_CLIENT_ID,
-            scope: GOOGLE_SCOPES,
-            callback: async (tokenResponse: any) => {
-                if (tokenResponse && tokenResponse.access_token) {
-                    try {
-                        googleAccessToken = tokenResponse.access_token;
-                        sessionStorage.setItem('google_access_token', googleAccessToken);
-                        const appUser = await _fetchGoogleUserProfile(googleAccessToken);
-                        currentUser = appUser;
-                        logEvent('auth_signin_success', { userId: appUser.uid });
-                        _notifyListeners(currentUser);
-                    } catch (error) {
-                        logError(error as Error, { context: 'googleAuthCallback' });
-                        signOut();
-                    }
-                } else {
-                    logError(new Error('Google sign-in failed: No access token in response.'), { tokenResponse });
-                    _notifyListeners(null);
-                }
-            },
-        });
-        logEvent('auth_google_client_init_success');
+      const session = await authService.handleLoginCallback();
+      logEvent('auth_callback_handling_success', { userId: session.sub });
+      return session;
     } catch (error) {
-        logError(error as Error, { context: 'initTokenClient_failure' });
+      logError(error as Error, { context: 'handleAuthCallback' });
+      // Re-throw the error to be handled by the calling component (e.g., to show an error UI)
+      throw error;
     }
-}
+  });
+};
 
 /**
- * Triggers the Google Sign-In flow.
+ * A wrapper function to initiate the logout process.
+ * This will clear the local session and redirect the user to the AuthGateway's logout endpoint.
+ * @returns {Promise<void>}
  */
-export function signInWithGoogle() {
-  if (tokenClient) {
-    logEvent('auth_signin_triggered');
-    tokenClient.requestAccessToken({ prompt: '' });
-  } else {
-    logError(new Error("Attempted to sign in, but Google Auth Client is not initialized."));
-  }
-}
-
-/**
- * Signs the user out of the application.
- */
-export function signOut() {
-    logEvent('auth_signout_triggered');
-    if (googleAccessToken) {
-        google.accounts.oauth2.revoke(googleAccessToken, () => {});
-    }
-    sessionStorage.removeItem('google_access_token');
-    currentUser = null;
-    googleAccessToken = null;
-    _notifyListeners(null);
-    logEvent('auth_signout_complete');
-}
+export const signOut = (): Promise<void> => {
+  logEvent('auth_signout_triggered');
+  return measurePerformance('auth.signOut', () => authService.logout());
+};
 
 /**
  * Subscribes to authentication state changes.
- * @param {(user: AppUser | null) => void} callback The function to call on state change.
- * @returns {() => void} An unsubscribe function.
+ * @param {AuthStateCallback} callback The function to call when the auth state changes.
+ * @returns {() => void} A function to unsubscribe the listener.
+ * @example
+ * useEffect(() => {
+ *   const unsubscribe = onAuthStateChanged(state => {
+ *     console.log('New auth state:', state);
+ *   });
+ *   return unsubscribe;
+ * }, []);
  */
-export function onAuthStateChanged(callback: (user: AppUser | null) => void): () => void {
-    listeners.add(callback);
-    // Immediately invoke with current state
-    callback(currentUser);
-    return () => listeners.delete(callback);
-}
+export const onAuthStateChanged = (callback: AuthStateCallback): (() => void) => {
+  return authService.onAuthStateChanged(callback);
+};
 
 /**
- * Retrieves the currently authenticated user.
- * @returns {AppUser | null} The current user object or null if not authenticated.
+ * Retrieves the currently authenticated user's session information from the decoded JWT.
+ * @returns {UserSession | null} The decoded user session object, or null if not authenticated.
  */
-export function getCurrentUser(): AppUser | null {
-    return currentUser;
-}
-
-// --- Gemini API Key Management ---
+export const getCurrentUser = (): UserSession | null => {
+  return authService.getSession();
+};
 
 /**
- * Saves the user-provided Gemini API key to local storage.
- * @param {string} apiKey The Gemini API key.
- * @security Storing API keys in localStorage is a significant security risk as it can be accessed via XSS attacks. This method should only be used in a secure, local development environment. For production, keys must be managed server-side.
+ * Checks if the user is currently authenticated with a valid, non-expired session.
+ * @returns {boolean} `true` if authenticated, `false` otherwise.
  */
-export function saveGeminiApiKey(apiKey: string): void {
-    if (!apiKey || typeof apiKey !== 'string') {
-        logError(new Error('Invalid API key provided.'), { context: 'saveGeminiApiKey' });
-        return;
-    }
-    try {
-        localStorage.setItem(GEMINI_API_KEY_STORAGE_KEY, apiKey);
-        logEvent('gemini_api_key_saved');
-    } catch (error) {
-        logError(error as Error, { context: 'saveGeminiApiKey_localStorage' });
-    }
-}
+export const isAuthenticated = (): boolean => {
+  return authService.isAuthenticated();
+};
 
 /**
- * Retrieves the Gemini API key from local storage.
- * @returns {string | null} The stored Gemini API key, or null if not found.
- * @security See security warning for `saveGeminiApiKey`.
+ * Retrieves the current session JWT for making authenticated API calls to the BFF.
+ * @returns {Promise<string | null>} The JWT string, or null if the user is not authenticated or the token is expired.
  */
-export function getGeminiApiKey(): string | null {
-    try {
-        return localStorage.getItem(GEMINI_API_KEY_STORAGE_KEY);
-    } catch (error) {
-        logError(error as Error, { context: 'getGeminiApiKey_localStorage' });
-        return null;
-    }
-}
-
-/**
- * Checks if a Gemini API key has been stored.
- * @returns {boolean} True if a key exists, false otherwise.
- */
-export function hasGeminiApiKey(): boolean {
-    return getGeminiApiKey() !== null;
-}
-
-/**
- * Clears the Gemini API key from local storage.
- */
-export function clearGeminiApiKey(): void {
-    try {
-        localStorage.removeItem(GEMINI_API_KEY_STORAGE_KEY);
-        logEvent('gemini_api_key_cleared');
-    } catch (error) {
-        logError(error as Error, { context: 'clearGeminiApiKey_localStorage' });
-    }
-}
+export const getJwt = (): Promise<string | null> => {
+  return authService.getJwt();
+};

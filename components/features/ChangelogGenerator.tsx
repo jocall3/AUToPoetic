@@ -2,7 +2,7 @@
  * @file components/features/ChangelogGenerator.tsx
  * @description A feature component for generating a formatted changelog from raw git log output using an AI service.
  * @license
- * Copyright James Burvel Oâ€™Callaghan III
+ * Copyright James Burvel O'Callaghan III
  * President Citibank Demo Business Inc.
  */
 
@@ -10,18 +10,18 @@ import React, { useState, useCallback, useReducer } from 'react';
 
 // --- Framework Imports ---
 // Abstracted UI components from the new proprietary UI framework.
-import { Button, TextArea, Label, Icon, Spinner } from 'ui/core';
-import { FeatureHeader, CodePanel, TwoColumnLayout, Panel } from 'ui/composite';
-import { GitBranchIcon, SparklesIcon, ClipboardIcon } from 'ui/icons';
-import { MarkdownRenderer } from 'ui/shared';
+import { Button, TextArea, Label, Icon, Spinner } from '../../ui/core';
+import { FeatureHeader, CodePanel, TwoColumnLayout, Panel } from '../../ui/composite';
+import { GitBranchIcon, SparklesIcon, ClipboardIcon } from '../../ui/icons';
+import { MarkdownRenderer } from '../../ui/shared';
 
 // --- Service Imports ---
 // Hook to interact with the Backend-for-Frontend (BFF) layer.
 // This encapsulates GraphQL queries and mutations for AI services.
-import { useBffService } from 'services/bff';
+import { useBffService } from '../../services/bff';
 // Hook to access the shared web worker pool. Not used here as prompt construction is trivial,
 // but included to demonstrate adherence to architectural directives for offloading computation.
-import { useWorkerPool } from 'services/worker-pool';
+import { useWorkerPool } from '../../services/worker-pool';
 
 // --- Type Definitions ---
 
@@ -155,7 +155,7 @@ export const ChangelogGenerator: React.FC = () => {
                 dispatch({ type: 'STREAM_DATA', payload: chunk.content });
             }
             dispatch({ type: 'STREAM_END' });
-        } catch (err) {
+        } catch (err) { 
             const message = err instanceof Error ? err.message : 'An unknown error occurred while generating the changelog.';
             dispatch({ type: 'ERROR', payload: message });
         }
@@ -164,26 +164,24 @@ export const ChangelogGenerator: React.FC = () => {
     const isLoading = state.status === 'streaming';
 
     return (
-        <Panel>
+        <Panel className="h-full flex flex-col">
             <FeatureHeader
                 icon={<Icon as={GitBranchIcon} />}
                 title="AI Changelog Generator"
                 subtitle="Generate a markdown changelog from your raw git log."
             />
-            <TwoColumnLayout mainContent={
-                <TwoColumnLayout.Column>
+            <TwoColumnLayout className="flex-grow min-h-0 p-4 gap-4">
+                <TwoColumnLayout.Column className="flex flex-col">
                     <Label htmlFor="commit-input">Raw Git Log</Label>
                     <TextArea
                         id="commit-input"
                         value={log}
                         onChange={(e) => setLog(e.target.value)}
                         placeholder="Paste output of `git log` here..."
-                        className="flex-grow font-mono text-sm"
+                        className="flex-grow font-mono text-sm resize-none"
                     />
                 </TwoColumnLayout.Column>
-            }
-            sidebarContent={
-                 <TwoColumnLayout.Column>
+                 <TwoColumnLayout.Column className="flex flex-col">
                     <CodePanel 
                         title="Generated Changelog.md"
                         actions={
@@ -205,20 +203,17 @@ export const ChangelogGenerator: React.FC = () => {
                         {state.status === 'idle' && <p className="text-text-secondary">Your generated changelog will appear here.</p>}
                     </CodePanel>
                 </TwoColumnLayout.Column>
-            }
-            footerContent={
-                 <div className="flex justify-center">
-                    <Button 
-                        onClick={handleGenerate} 
-                        disabled={isLoading}
-                        icon={<Icon as={SparklesIcon} />}
-                        size="lg"
-                    >
-                        {isLoading ? 'Generating...' : 'Generate Changelog'}
-                    </Button>
-                </div>
-            }
-            />
+            </TwoColumnLayout>
+            <Panel.Footer className="flex justify-center">
+                 <Button 
+                    onClick={handleGenerate} 
+                    disabled={isLoading}
+                    icon={<Icon as={SparklesIcon} />}
+                    size="lg"
+                >
+                    {isLoading ? 'Generating...' : 'Generate Changelog'}
+                </Button>
+            </Panel.Footer>
         </Panel>
     );
 };

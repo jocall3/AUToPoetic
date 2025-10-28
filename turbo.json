@@ -1,0 +1,93 @@
+{
+  "$schema": "https://turbo.build/schema.json",
+  "globalDependencies": [
+    "tsconfig.base.json",
+    ".eslintrc.json",
+    "pnpm-lock.yaml"
+  ],
+  "globalEnv": [
+    "NODE_ENV",
+    "GEMINI_API_KEY",
+    "GH_PAT"
+  ],
+  "pipeline": {
+    "build": {
+      "dependsOn": [
+        "^build"
+      ],
+      "outputs": [
+        "dist/**",
+        ".next/**",
+        "!.next/cache/**"
+      ],
+      "inputs": [
+        "src/**",
+        "public/**",
+        "index.html",
+        "tsconfig.json",
+        "vite.config.ts",
+        "vite.lib.config.ts",
+        "webpack.config.js",
+        "tsup.config.ts",
+        "postcss.config.js",
+        "tailwind.config.js",
+        "package.json"
+      ]
+    },
+    "clean": {
+      "cache": false
+    },
+    "dev": {
+      "cache": false,
+      "persistent": true
+    },
+    "docs:generate": {
+      "dependsOn": [
+        "^build"
+      ],
+      "outputs": [
+        "documentation-portal/**"
+      ],
+      "inputs": [
+        "src/**",
+        "typedoc.json",
+        "README.md"
+      ]
+    },
+    "format": {
+      "cache": false
+    },
+    "lint": {
+      "inputs": [
+        "src/**",
+        "test/**",
+        "*.ts",
+        "*.tsx",
+        ".eslintrc.json"
+      ]
+    },
+    "lint:fix": {
+      "cache": false
+    },
+    "test": {
+      "outputs": [
+        "coverage/**"
+      ],
+      "inputs": [
+        "src/**",
+        "test/**",
+        "vitest.config.ts",
+        "jest.config.ts"
+      ]
+    },
+    "typecheck": {
+      "dependsOn": [
+        "^build"
+      ],
+      "inputs": [
+        "src/**",
+        "tsconfig.json"
+      ]
+    }
+  }
+}

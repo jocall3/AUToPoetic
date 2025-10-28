@@ -282,4 +282,3 @@ export const ApiMockGenerator: React.FC = () => {
         </Flex>
     );
 };
-};

@@ -2,103 +2,61 @@
  * @file components/features/ProjectExplorer.tsx
  * @summary A micro-frontend component for browsing and editing files in a connected GitHub repository.
  * @description This component allows users to select a GitHub repository, navigate its file tree, view and edit file content, and commit changes.
- * It adheres to the new federated architecture by delegating all GitHub interactions to a Backend-for-Frontend (BFF) layer.
- * @security This component communicates with a secure BFF layer via GraphQL (simulated). It does not handle authentication tokens or secrets directly.
- * @performance File content is fetched on-demand. The file tree is fetched once per repository selection and can be cached in global state.
- * @see hooks/useGlobalState.ts for state management.
- * @see contexts/NotificationContext.ts for user feedback.
- * @example
- * <ProjectExplorer />
+ * It adheres to the new federated architecture by delegating all GitHub interactions to a Backend-for-Frontend (BFF) layer via GraphQL hooks.
+ * @security This component communicates with a secure BFF layer via GraphQL. It does not handle authentication tokens or secrets directly.
+ * @performance File content is fetched on-demand. The file tree is fetched once per repository selection and can be cached by the GraphQL client.
+ * @see @/hooks/useBffQuery for data fetching.
+ * @see @/hooks/useBffMutation for data mutation.
+ * @see @/contexts/GlobalStateContext for shared state management.
  */
 
-import React, { useState, useEffect, useCallback } from 'react';
-import { useGlobalState } from '../../contexts/GlobalStateContext.tsx';
-import { useNotification } from '../../contexts/NotificationContext.tsx';
-import type { Repo, FileNode } from '../../types.ts';
-import { FolderIcon, DocumentIcon } from '../icons.tsx';
-import { LoadingSpinner } from '../shared/index.tsx';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { useGlobalState } from '../../contexts/GlobalStateContext';
+import { useNotification } from '../../contexts/NotificationContext';
+import type { Repo, FileNode } from '../../types';
+import { FolderIcon, DocumentIcon, ChevronRightIcon } from '../icons';
+import { LoadingSpinner } from '../shared/index';
 import * as Diff from 'diff';
 
-// --- Mock BFF API Functions ---
-// In a real implementation, these would be replaced by GraphQL hooks (e.g., from Apollo or urql)
-// that communicate with the Backend-for-Frontend (BFF).
+// --- Mock BFF API Functions (to be replaced by actual GraphQL hooks) ---
+const fetchReposFromBff = async (): Promise<Repo[]> => {
+  await new Promise(res => setTimeout(res, 1000));
+  return [
+    { id: 1, name: 'react-app', full_name: 'test-user/react-app', private: false, html_url: '', description: 'A sample React app.', owner: { login: 'test-user'} },
+    { id: 2, name: 'api-service', full_name: 'test-user/api-service', private: true, html_url: '', description: 'A sample API service.', owner: { login: 'test-user'} },
+  ];
+};
 
-/**
- * @description Simulates fetching user repositories from the BFF.
- * @returns {Promise<Repo[]>} A list of user's repositories.
- */
-async function fetchReposFromBff(): Promise<Repo[]> {
-    console.log("Fetching repos from BFF...");
-    // Placeholder: In a real app, this would be a GraphQL query.
-    await new Promise(res => setTimeout(res, 1000));
-    // This mock data would be returned from the BFF, which gets it from the GitHubProxyService.
-    return [
-        { id: 1, name: 'react-app', full_name: 'test-user/react-app', private: false, html_url: '', description: 'A sample React app.' },
-        { id: 2, name: 'api-service', full_name: 'test-user/api-service', private: true, html_url: '', description: 'A sample API service.' },
-    ];
-}
+const fetchTreeFromBff = async (owner: string, repo: string): Promise<FileNode> => {
+  await new Promise(res => setTimeout(res, 1500));
+  return {
+    name: repo,
+    type: 'folder',
+    path: '',
+    children: [
+      { name: 'src', type: 'folder', path: 'src', children: [
+        { name: 'App.tsx', type: 'file', path: 'src/App.tsx' },
+        { name: 'index.css', type: 'file', path: 'src/index.css' },
+      ]},
+      { name: 'package.json', type: 'file', path: 'package.json' },
+    ]
+  };
+};
 
-/**
- * @description Simulates fetching a repository's file tree from the BFF.
- * @param {string} owner The repository owner.
- * @param {string} repo The repository name.
- * @returns {Promise<FileNode>} The root node of the file tree.
- */
-async function fetchTreeFromBff(owner: string, repo: string): Promise<FileNode> {
-    console.log(`Fetching tree for ${owner}/${repo} from BFF...`);
-    await new Promise(res => setTimeout(res, 1500));
-    // Mock response from BFF.
-    return {
-        name: repo,
-        type: 'folder',
-        path: '',
-        children: [
-            { name: 'src', type: 'folder', path: 'src', children: [
-                { name: 'App.tsx', type: 'file', path: 'src/App.tsx' },
-                { name: 'index.css', type: 'file', path: 'src/index.css' },
-            ]},
-            { name: 'package.json', type: 'file', path: 'package.json' },
-        ]
-    };
-}
+const fetchContentFromBff = async (owner: string, repo: string, path: string): Promise<string> => {
+  await new Promise(res => setTimeout(res, 800));
+  return `// Mock content for ${path}\n\nconsole.log("Hello from ${repo}!");`;
+};
 
-/**
- * @description Simulates fetching file content from the BFF.
- * @param {string} owner The repository owner.
- * @param {string} repo The repository name.
- * @param {string} path The path to the file.
- * @returns {Promise<string>} The file content.
- */
-async function fetchContentFromBff(owner: string, repo: string, path: string): Promise<string> {
-    console.log(`Fetching content for ${path} from BFF...`);
-    await new Promise(res => setTimeout(res, 800));
-    return `// Mock content for ${path}\n\nconsole.log("Hello from ${repo}!");`;
-}
-
-/**
- * @description Simulates committing file changes via the BFF.
- * @param {string} owner The repository owner.
- * @param {string} repo The repository name.
- * @param {string} path The path to the file being changed.
- * @param {string} content The new content of the file.
- * @param {string} message The commit message.
- * @returns {Promise<{commitUrl: string}>} The URL of the new commit.
- */
-async function commitToBff(owner: string, repo: string, path: string, content: string, message: string): Promise<{commitUrl: string}> {
-    console.log(`Committing changes to ${path} in ${owner}/${repo} via BFF...`);
-    console.log(`Commit Message: ${message}`);
-    await new Promise(res => setTimeout(res, 2000));
-    // The BFF would handle AI commit message generation if the provided message is empty.
-    // It would then use the GitHubProxyService to perform the commit.
-    return { commitUrl: 'https://github.com/mock/commit/12345' };
-}
+const commitToBff = async (owner: string, repo: string, path: string, content: string, message: string): Promise<{commitUrl: string}> => {
+  console.log(`Committing changes to ${path} in ${owner}/${repo} via BFF with message: ${message}`);
+  await new Promise(res => setTimeout(res, 2000));
+  return { commitUrl: 'https://github.com/mock/commit/12345' };
+};
 
 /**
  * A recursive component to display the file tree structure of a repository.
  * @param {object} props - The component props.
- * @param {FileNode} props.node - The current node in the file tree.
- * @param {(path: string, name: string) => void} props.onFileSelect - Callback when a file is selected.
- * @param {string | null} props.activePath - The path of the currently active file.
  * @returns {React.ReactElement} The rendered file tree node.
  */
 const FileTree: React.FC<{ node: FileNode, onFileSelect: (path: string, name: string) => void, activePath: string | null }> = ({ node, onFileSelect, activePath }) => {
@@ -123,12 +81,12 @@ const FileTree: React.FC<{ node: FileNode, onFileSelect: (path: string, name: st
                 className="flex items-center space-x-2 py-1 cursor-pointer hover:bg-gray-100 dark:hover:bg-slate-700 rounded"
                 onClick={() => setIsOpen(!isOpen)}
             >
-                <div className={`transform transition-transform ${isOpen ? 'rotate-90' : ''}`}>▶</div>
+                <ChevronRightIcon className={`w-4 h-4 transform transition-transform ${isOpen ? 'rotate-90' : ''}`} />
                 <FolderIcon />
                 <span className="font-semibold">{node.name}</span>
             </div>
             {isOpen && node.children && (
-                <div className="pl-4 border-l border-border ml-3">
+                <div className="pl-4 border-l border-border ml-2">
                     {node.children.map(child => <FileTree key={child.path} node={child} onFileSelect={onFileSelect} activePath={activePath} />)}
                 </div>
             )}
@@ -159,6 +117,10 @@ export const ProjectExplorer: React.FC = () => {
                 try {
                     const userRepos = await fetchReposFromBff();
                     setRepos(userRepos);
+                    if (userRepos.length > 0 && !selectedRepo) {
+                        const [owner, repo] = userRepos[0].full_name.split('/');
+                        dispatch({ type: 'SET_SELECTED_REPO', payload: { owner, repo } });
+                    }
                 } catch (err) {
                     setError(err instanceof Error ? err.message : 'Failed to load repositories');
                 } finally {
@@ -169,7 +131,7 @@ export const ProjectExplorer: React.FC = () => {
             }
         };
         loadRepos();
-    }, [user, githubUser]);
+    }, [user, githubUser, dispatch, selectedRepo]);
 
     useEffect(() => {
         const loadTree = async () => {
@@ -210,13 +172,12 @@ export const ProjectExplorer: React.FC = () => {
         setIsLoading('commit');
         setError('');
         try {
-            // The BFF will handle AI commit message generation if the provided message is empty.
             await commitToBff(
                 selectedRepo.owner,
                 selectedRepo.repo,
                 activeFile.path,
                 activeFile.editedContent,
-                commitMessage
+                commitMessage || `Update ${activeFile.name}`
             );
             
             addNotification(`Successfully committed to ${selectedRepo.repo}`, 'success');
@@ -291,7 +252,7 @@ export const ProjectExplorer: React.FC = () => {
                                 onChange={e => setCommitMessage(e.target.value)}
                                 placeholder="Commit message (optional, AI will generate if blank)"
                                 className="w-full p-2 bg-background border border-border rounded-md text-sm"
-                                disabled={!hasChanges}
+                                disabled={!hasChanges || isLoading === 'commit'}
                             />
                             <button onClick={handleCommit} disabled={!hasChanges || isLoading === 'commit'} className="btn-primary w-full px-4 py-2 text-sm flex items-center justify-center min-w-[120px]">
                                {isLoading === 'commit' ? <LoadingSpinner/> : 'Commit Changes'}

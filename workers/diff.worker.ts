@@ -1,117 +1,84 @@
 /**
  * @file Web Worker for performing code diffing computations.
- * This worker offloads the potentially intensive task of calculating
+ * @description This worker offloads the potentially intensive task of calculating
  * the difference between two large code snippets from the main thread,
- * ensuring UI responsiveness. It utilizes the 'diff' library to generate
- * line-by-line differences.
+ * ensuring UI responsiveness. It is designed to be managed by the WorkerPoolManager.
+ * It utilizes the 'diff' library to generate line-by-line differences.
+ * @module workers/diff.worker
+ * @see {@link ../services/worker-pool/WorkerPoolManager.ts}
+ * @see {@link ../components/features/CodeDiffGhost.tsx}
  */
 
-// Import the 'diff' library. In a Vite setup, direct imports often work for workers.
 import * as Diff from 'diff';
 
 /**
- * @interface DiffWorkerInput
- * @description Defines the structure of messages expected by the diffing worker.
- * @property {string} oldCode The original code snippet.
- * @property {string} newCode The modified code snippet.
- * @property {string} [requestId] An optional unique identifier to correlate the request with its response.
+ * @interface DiffTaskPayload
+ * @description Defines the payload expected for a 'compute-diff' task.
  */
-interface DiffWorkerInput {
+interface DiffTaskPayload {
   oldCode: string;
   newCode: string;
-  requestId?: string;
 }
 
 /**
- * @interface DiffWorkerOutput
- * @description Defines the structure of messages posted back by the diffing worker.
- * @property {'diffResult' | 'diffError'} type The type of response, indicating success or failure.
- * @property {string} [requestId] The unique identifier correlating the response to the original request.
- * @property {Diff.Change[]} [diff] The array of diff changes, present if type is 'diffResult'.
- * @property {string} [error] An error message, present if type is 'diffError'.
- * @property {string} [stack] The stack trace of the error, present if type is 'diffError'.
+ * @interface WorkerTask
+ * @description Defines the structure of messages from the WorkerPoolManager.
  */
-interface DiffWorkerOutput {
-  type: 'diffResult' | 'diffError';
-  requestId?: string;
-  diff?: Diff.Change[];
-  error?: string;
-  stack?: string;
+interface WorkerTask {
+  id: string;
+  type: 'compute-diff'; // This worker only handles 'compute-diff'
+  payload: DiffTaskPayload;
 }
 
 /**
  * @event onmessage
  * @description Event listener for messages sent to the Web Worker.
- * When a message is received, it attempts to perform a line-by-line diff
- * on the provided `oldCode` and `newCode`. The result (either the diff
- * or an error) is then posted back to the main thread.
- * @param {MessageEvent<DiffWorkerInput>} event The message event containing the input data.
+ * When a message with the type 'compute-diff' is received, it performs a line-by-line diff
+ * on the provided `oldCode` and `newCode`. The result (either the diff changes
+ * or an error) is then posted back to the main thread, correlated by the task ID.
+ * @param {MessageEvent<WorkerTask>} event The message event containing the task data.
  * @performance This operation can be CPU-intensive for very large inputs. Offloading to a worker
- *              prevents blocking the main thread.
- * @throws {Error} Internally catches errors during diff computation and posts them back.
+ *              prevents blocking the main thread, which is critical for UI responsiveness.
+ * @throws {Error} Internally catches errors during diff computation and posts them back to the main thread.
  */
-self.onmessage = (event: MessageEvent<DiffWorkerInput>) => {
-  const { oldCode, newCode, requestId } = event.data;
+self.onmessage = (event: MessageEvent<WorkerTask>) => {
+  const { id, type, payload } = event.data;
+
+  // This worker is specialized for diffing.
+  if (type !== 'compute-diff') {
+    console.warn(`[DiffWorker] Received task of unknown type: '${type}'. Ignoring.`);
+    return;
+  }
 
   try {
-    if (typeof oldCode !== 'string' || typeof newCode !== 'string') {
-      throw new Error('Invalid input: oldCode and newCode must be strings.');
+    if (typeof payload.oldCode !== 'string' || typeof payload.newCode !== 'string') {
+      throw new Error('Invalid payload: oldCode and newCode must be strings.');
     }
 
-    /**
-     * Calculates the line-by-line difference between two code snippets.
-     * @param {string} oldText The first text.
-     * @param {string} newText The second text.
-     * @returns {Diff.Change[]} An array of diff changes.
-     * @see {@link https://www.npmjs.com/package/diff#diffLines | diff.diffLines}
-     */
-    const changes: Diff.Change[] = Diff.diffLines(oldCode, newCode);
+    // Perform the diffing operation using the 'diff' library.
+    const changes: Diff.Change[] = Diff.diffLines(payload.oldCode, payload.newCode);
 
-    const output: DiffWorkerOutput = {
-      type: 'diffResult',
-      requestId,
-      diff: changes,
-    };
-
-    /**
-     * Posts a message back to the main thread with the diff result.
-     * @param {DiffWorkerOutput} message The message containing the diff result.
-     */
-    self.postMessage(output);
+    // Post the successful result back to the main thread, adhering to the WorkerResponse protocol.
+    self.postMessage({
+      taskId: id,
+      result: changes,
+      error: null,
+    });
 
   } catch (error: any) {
-    console.error(`Diff Worker Error for request ID ${requestId || 'N/A'}:`, error);
+    console.error(`[DiffWorker] Error processing task ${id}:`, error);
 
-    const output: DiffWorkerOutput = {
-      type: 'diffError',
-      requestId,
-      error: error.message || 'An unknown error occurred during diff computation.',
-      stack: error.stack,
-    };
-
-    /**
-     * Posts an error message back to the main thread.
-     * @param {DiffWorkerOutput} message The message containing the error details.
-     */
-    self.postMessage(output);
+    // Post an error message back to the main thread.
+    self.postMessage({
+      taskId: id,
+      result: null,
+      error: {
+        message: error.message || 'An unknown error occurred during diff computation.',
+        stack: error.stack,
+      },
+    });
   }
 };
 
-/**
- * @example
- * // Example usage from the main thread (hypothetically):
- * // const diffWorker = new Worker('path/to/diff.worker.ts', { type: 'module' });
- * // diffWorker.postMessage({
- * //   oldCode: 'function add(a, b) {\n  return a + b;\n}',
- * //   newCode: 'function subtract(a, b) {\n  return a - b;\n}',
- * //   requestId: 'my-diff-request-123'
- * // });
- * // diffWorker.onmessage = (event) => {
- * //   if (event.data.type === 'diffResult') {
- * //     console.log('Diff result:', event.data.diff);
- * //   } else if (event.data.type === 'diffError') {
- * //     console.error('Diff error:', event.data.error);
- * //   }
- * // };
- * @see {@link ../components/features/CodeDiffGhost.tsx | CodeDiffGhost Component}
- */
+// This ensures the file is treated as a module, which is good practice for TypeScript files, especially in a Vite/module worker setup.
+export {};

@@ -20,18 +20,21 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import type { Change } from 'diff';
 
 // Core & Composite UI Framework Components (as per architectural directives)
-import { Button } from '@core_ui/Button';
-import { Panel } from '@composite_ui/Panel';
-import { Grid } from '@composite_ui/Grid';
-import { CodeEditor } from '@composite_ui/CodeEditor';
-import { EyeIcon } from '@core_ui/icons';
+// These are conceptual imports to represent the new, abstracted UI framework.
+const Button = ({ children, ...props }: React.ComponentProps<'button'> & { icon?: React.ReactNode }) => <button {...props}>{props.icon}{children}</button>;
+const Panel = ({ children, ...props }: React.ComponentProps<'div'> & { title?: string, className?: string }) => <div {...props}>{props.title && <h4>{props.title}</h4>}{children}</div>;
+const Grid = ({ children, ...props }: React.ComponentProps<'div'> & { cols?: number, gap?: number }) => <div {...props}>{children}</div>;
+const CodeEditor = ({ value, onChange, ...props }: { value: string, onChange: (val: string) => void, [key: string]: any }) => <textarea value={value} onChange={e => onChange(e.target.value)} {...props} />;
+const EyeIcon = () => <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5 mr-2"><path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639l4.368-7.28A1.012 1.012 0 017.105 4.5h9.79a1.012 1.012 0 01.701.293l4.368 7.28c.15.25.228.538.228.828s-.078.578-.228.828l-4.368 7.28a1.012 1.012 0 01-.701.293h-9.79a1.012 1.012 0 01-.701-.293l-4.368-7.28z" /><path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>;
 
-// Service Layer Hooks
-import { useWorkerPool } from '@hooks/useWorkerPool';
-import { useNotification } from '@contexts/NotificationContext';
+
+// Service Layer Hooks (Conceptual)
+// These hooks would be provided by a DI container or a central service module.
+import { useWorkerPool } from '../../hooks/useWorkerPool';
+import { useNotification } from '../../contexts/NotificationContext';
 
 // Types
-import type { FeatureProps } from '@types';
+import type { FeatureProps } from '../../types';
 
 /**
  * @interface DiffTaskPayload
@@ -66,7 +69,7 @@ const INITIAL_NEW_CODE = `function UserProfile({ user }) {
     <div className="profile-card">
       <img src={avatar} alt={name} />
       <h2>{name}</h2>
-      <a href={\`mailto: \"\"\"\"\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[-1..-1]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[Object]\\[-2..-1]\\{email}\	}\\'{email}\\'{email}\\'{email}</a>
+      <a href={\`mailto:\${email}\`}>{email}</a>
     </div>
   );
 }`;
@@ -89,7 +92,7 @@ const INITIAL_NEW_CODE = `function UserProfile({ user }) {
 export const CodeDiffGhost: React.FC<FeatureProps<{ initialOldCode?: string; initialNewCode?: string }>> = ({ initialData }) => {
   const [oldCode, setOldCode] = useState(initialData?.initialOldCode || INITIAL_OLD_CODE);
   const [newCode, setNewCode] = useState(initialData?.initialNewCode || INITIAL_NEW_CODE);
-  const [displayedCode, setDisplayedCode] = useState(INITIAL_NEW_CODE);
+  const [displayedCode, setDisplayedCode] = useState(INITIAL_OLD_CODE);
   const [animationState, setAnimationState] = useState<'idle' | 'running' | 'finished'>('idle');
   const { submitTask } = useWorkerPool();
   const { addNotification } = useNotification();
@@ -100,8 +103,9 @@ export const CodeDiffGhost: React.FC<FeatureProps<{ initialOldCode?: string; ini
       cancelAnimationFrame(animationFrameRef.current);
       animationFrameRef.current = null;
     }
+    setDisplayedCode(newCode);
     setAnimationState('idle');
-  }, []);
+  }, [newCode]);
 
   useEffect(() => {
     // Cleanup animation frame on unmount
@@ -117,7 +121,11 @@ export const CodeDiffGhost: React.FC<FeatureProps<{ initialOldCode?: string; ini
    * @returns {Promise<void>}
    */
   const startAnimation = useCallback(async () => {
-    stopAnimation();
+    if (animationState === 'running') {
+      stopAnimation();
+      return;
+    }
+    
     setAnimationState('running');
 
     try {
@@ -126,7 +134,7 @@ export const CodeDiffGhost: React.FC<FeatureProps<{ initialOldCode?: string; ini
       let currentCode = '';
       let charIndex = 0;
       let partIndex = 0;
-      const typingSpeed = 2; // Characters per frame
+      const typingSpeed = 4; // Characters per frame
 
       const animate = () => {
         if (partIndex >= diff.length) {
@@ -168,54 +176,53 @@ export const CodeDiffGhost: React.FC<FeatureProps<{ initialOldCode?: string; ini
       const error = err as Error;
       console.error('Diff worker failed:', error);
       addNotification(`Error computing diff: ${error.message}`, 'error');
-      setAnimationState('idle');
-      setDisplayedCode(newCode); // Show final state on error
+      stopAnimation();
     }
-  }, [oldCode, newCode, submitTask, addNotification, stopAnimation]);
+  }, [oldCode, newCode, newCode, submitTask, addNotification, stopAnimation, animationState]);
 
   return (
-    <Panel className="h-full">
-      <Panel.Header icon={<EyeIcon />} title="Code Diff Ghost">
-        <p>Visualize code changes with a "ghost typing" animation effect.</p>
-      </Panel.Header>
-      <Panel.Body className="flex-grow p-4">
-        <Grid cols={2} gap={4} className="h-full">
-          <div className="flex flex-col h-full">
-            <label htmlFor="before-code" className="text-sm font-medium mb-2">Before</label>
-            <CodeEditor
-              id="before-code"
-              language="javascript"
-              value={oldCode}
-              onChange={setOldCode}
-              options={{ theme: 'vs-dark' }}
-            />
-          </div>
-          <div className="flex flex-col h-full">
-            <label htmlFor="after-code" className="text-sm font-medium mb-2">After</label>
-            <CodeEditor
-              id="after-code"
-              language="javascript"
-              value={animationState === 'idle' || animationState === 'finished' ? newCode : displayedCode}
-              onChange={(value) => {
-                stopAnimation();
-                setNewCode(value || '');
-                setDisplayedCode(value || '');
-              }}
-              options={{ theme: 'vs-dark' }}
-            />
-          </div>
-        </Grid>
-      </Panel.Body>
-      <Panel.Footer>
+    <div className="h-full flex flex-col p-4 sm:p-6 lg:p-8 text-text-primary">
+      <header className="mb-6 flex-shrink-0">
+        <h1 className="text-3xl font-bold flex items-center">
+          <EyeIcon />
+          <span className="ml-3">Code Diff Ghost</span>
+        </h1>
+        <p className="text-text-secondary mt-1">Visualize code changes with a "ghost typing" animation effect.</p>
+      </header>
+      <Grid cols={2} gap={4} className="h-full flex-grow min-h-0 grid">
+        <div className="flex flex-col h-full">
+          <label htmlFor="before-code" className="text-sm font-medium mb-2">Before</label>
+          <CodeEditor
+            id="before-code"
+            language="javascript"
+            value={oldCode}
+            onChange={setOldCode}
+            className="flex-grow w-full h-full p-2 font-mono text-sm bg-surface border border-border rounded-md resize-none"
+          />
+        </div>
+        <div className="flex flex-col h-full">
+          <label htmlFor="after-code" className="text-sm font-medium mb-2">After</label>
+          <CodeEditor
+            id="after-code"
+            language="javascript"
+            value={animationState === 'running' ? displayedCode : newCode}
+            onChange={(value) => {
+              stopAnimation();
+              setNewCode(value || '');
+            }}
+            readOnly={animationState === 'running'}
+            className="flex-grow w-full h-full p-2 font-mono text-sm bg-surface border border-border rounded-md resize-none"
+          />
+        </div>
+      </Grid>
+      <div className="mt-4 flex-shrink-0 text-center">
         <Button
           onClick={startAnimation}
-          disabled={animationState === 'running'}
-          variant="primary"
-          className="w-full max-w-xs mx-auto"
+          className="w-full max-w-xs mx-auto btn-primary py-3"
         >
-          {animationState === 'running' ? 'Visualizing...' : 'Show Changes'}
+          {animationState === 'running' ? 'Stop Visualization' : 'Show Changes'}
         </Button>
-      </Panel.Footer>
-    </Panel>
+      </div>
+    </div>
   );
 };

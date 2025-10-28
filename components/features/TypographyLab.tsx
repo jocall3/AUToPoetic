@@ -17,18 +17,49 @@ import { useNotification } from '../../contexts/NotificationContext.tsx';
 
 // Architectural Directive: Pluggable, Themeable, and Abstracted UI Framework
 // The following components are assumed to exist in a proprietary UI library.
-import { 
-    Container, 
-    FeatureHeader, 
-    Grid, 
-    Card,
-    Stack,
-    SelectField,
-    CodeBlock,
-    Typography,
-    Divider,
-    Box,
-} from '../../ui-framework/components'; // Hypothetical UI Framework import
+// For demonstration, these are simple placeholders.
+const Container: React.FC<{ children: React.ReactNode; className?: string }> = ({ children, className }) => <div className={`h-full flex flex-col p-4 sm:p-6 lg:p-8 ${className}`}>{children}</div>;
+const FeatureHeader: React.FC<{ icon: React.ReactNode; title: string; subtitle: string }> = ({ icon, title, subtitle }) => (
+    <header className="mb-6 flex-shrink-0">
+        <h1 className="text-3xl font-bold flex items-center">{icon}<span className="ml-3">{title}</span></h1>
+        <p className="text-text-secondary mt-1">{subtitle}</p>
+    </header>
+);
+const Grid = {
+    Root: ({ children, className }: { children: React.ReactNode; className?: string }) => <div className={`grid ${className}`}>{children}</div>,
+    Item: ({ children, className }: { children: React.ReactNode; className?: string }) => <div className={className}>{children}</div>
+};
+const Card = {
+    Root: ({ children, className }: { children: React.ReactNode; className?: string }) => <div className={`bg-surface border border-border rounded-lg flex flex-col ${className}`}>{children}</div>,
+    Header: ({ title }: { title: string }) => <div className="p-4 border-b border-border"><h3 className="font-semibold text-lg text-text-primary">{title}</h3></div>,
+    Body: ({ children, className }: { children: React.ReactNode; className?: string }) => <div className={`p-4 ${className}`}>{children}</div>
+};
+const Stack: React.FC<{ children: React.ReactNode; className?: string }> = ({ children, className }) => <div className={`flex flex-col ${className}`}>{children}</div>;
+const SelectField: React.FC<{ label: string; value: string; onChange: (value: string) => void; options: { label: string; value: string }[] }> = ({ label, value, onChange, options }) => (
+    <div>
+        <label className="block text-sm font-medium text-text-secondary mb-1">{label}</label>
+        <select value={value} onChange={(e) => onChange(e.target.value)} className="w-full p-2 bg-background border border-border rounded-md text-text-primary focus:ring-2 focus:ring-primary focus:outline-none">
+            {options.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
+        </select>
+    </div>
+);
+const CodeBlock: React.FC<{ code: string; language: string; onCopy: () => void }> = ({ code, language, onCopy }) => (
+    <div className="relative bg-background rounded-md p-4 font-mono text-xs text-primary border border-border">
+        <button onClick={onCopy} title="Copy code" className="absolute top-2 right-2 p-1 text-text-secondary hover:text-primary rounded-md hover:bg-surface-hover">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
+        </button>
+        <pre><code>{code}</code></pre>
+    </div>
+);
+const Typography = {
+    H1: ({ children, style, as = 'h1' }: { children: React.ReactNode; style?: React.CSSProperties, as?: 'h1' }) => React.createElement(as, { className: "text-5xl font-bold break-words text-text-primary", style }, children),
+    H2: ({ children, style, as = 'h2' }: { children: React.ReactNode; style?: React.CSSProperties, as?: 'h2'|'h3' }) => React.createElement(as, { className: "text-4xl font-bold break-words text-text-primary", style }, children),
+    Body1: ({ children, className, style }: { children: React.ReactNode; className?: string, style?: React.CSSProperties }) => <p className={`text-lg leading-relaxed ${className}`} style={style}>{children}</p>,
+    Body2: ({ children, className, style }: { children: React.ReactNode; className?: string, style?: React.CSSProperties }) => <p className={`text-base ${className}`} style={style}>{children}</p>,
+    Label: ({ children }: { children: React.ReactNode }) => <span className="text-sm font-medium text-text-secondary">{children}</span>,
+};
+const Divider = () => <hr className="border-border my-4" />;
+const Box: React.FC<{ children: React.ReactNode; className?: string }> = ({ children, className }) => <div className={className}>{children}</div>;
 
 /**
  * @constant POPULAR_FONTS
@@ -37,7 +68,7 @@ import {
  */
 const POPULAR_FONTS: string[] = [
     'Roboto', 'Open Sans', 'Lato', 'Montserrat', 'Oswald', 'Source Sans Pro', 'Raleway', 'Poppins', 'Nunito', 'Merriweather',
-    'Playfair Display', 'Lora', 'Noto Sans', 'Ubuntu', 'PT Sans', 'Slabo 27px', 'Inter', 'Work Sans', 'Karla'
+    'Playfair Display', 'Lora', 'Noto Sans', 'Ubuntu', 'PT Sans', 'Inter', 'Work Sans', 'Karla'
 ];
 
 /**
@@ -93,8 +124,8 @@ const CodeSnippet: React.FC<CodeSnippetProps> = ({ label, code }) => {
     }, [code, label, addNotification]);
 
     return (
-        <Stack direction="column" gap={1}>
-            <Typography variant="label">{label}</Typography>
+        <Stack className="gap-1">
+            <Typography.Label>{label}</Typography.Label>
             <CodeBlock code={code} language="css" onCopy={handleCopy} />
         </Stack>
     );
@@ -147,25 +178,25 @@ export const TypographyLab: React.FC = () => {
     }), [headingFont, bodyFont]);
 
     return (
-        <Container variant="feature">
+        <Container className="variant-feature">
             <FeatureHeader
                 icon={<TypographyLabIcon />}
                 title="Typography Lab"
                 subtitle="Preview font pairings and get the necessary CSS rules to implement them."
             />
-            <Grid columns={3} gap={6} className="flex-grow min-h-0">
-                <Grid.Item colSpan={1}>
-                    <Card className="h-full flex flex-col">
+            <Grid.Root className="grid grid-cols-1 lg:grid-cols-3 gap-6 flex-grow min-h-0">
+                <Grid.Item className="lg:col-span-1">
+                    <Card.Root className="h-full">
                         <Card.Header title="Controls" />
                         <Card.Body className="flex-grow overflow-y-auto">
-                            <Stack direction="column" gap={6}>
-                                <Stack direction="column" gap={4}>
+                            <Stack className="gap-6">
+                                <Stack className="gap-4">
                                     <FontSelector label="Heading Font" value={headingFont} onChange={setHeadingFont} />
                                     <FontSelector label="Body Font" value={bodyFont} onChange={setBodyFont} />
                                 </Stack>
                                 <Divider />
-                                <Stack direction="column" gap={4}>
-                                    <Typography variant="h6">CSS Rules</Typography>
+                                <Stack className="gap-4">
+                                    <Typography.H2 as="h3" style={{ fontFamily: 'var(--font-serif)'}}>CSS Rules</Typography.H2>
                                     <CodeSnippet label="Heading Font Import" code={headingImport} />
                                     <CodeSnippet label="Heading CSS Rule" code={headingRule} />
                                     <CodeSnippet label="Body Font Import" code={bodyImport} />
@@ -173,22 +204,22 @@ export const TypographyLab: React.FC = () => {
                                 </Stack>
                             </Stack>
                         </Card.Body>
-                    </Card>
+                    </Card.Root>
                 </Grid.Item>
-                <Grid.Item colSpan={2}>
+                <Grid.Item className="lg:col-span-2">
                     <Box className="bg-surface border border-border rounded-lg p-8 h-full overflow-y-auto">
-                        <Typography variant="h2" as="h1" style={{ fontFamily: `'${headingFont}', sans-serif`, fontWeight: 700 }}>
+                        <Typography.H1 as="h1" style={{ fontFamily: `'${headingFont}', sans-serif`, fontWeight: 700 }}>
                             The Quick Brown Fox Jumps Over the Lazy Dog
-                        </Typography>
-                        <Typography variant="body1" className="mt-4" style={{ fontFamily: `'${bodyFont}', sans-serif`, fontSize: '1.125rem', lineHeight: '1.75' }}>
+                        </Typography.H1>
+                        <Typography.Body1 className="mt-4" style={{ fontFamily: `'${bodyFont}', sans-serif`, fontSize: '1.125rem', lineHeight: '1.75' }}>
                             Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed non risus. Suspendisse lectus tortor, dignissim sit amet, adipiscing nec, ultricies sed, dolor. Cras elementum ultrices diam. Maecenas ligula massa, varius a, semper congue, euismod non, mi. Proin porttitor, orci nec nonummy molestie, enim est eleifend mi, non fermentum diam nisl sit amet erat.
-                        </Typography>
-                         <Typography variant="body2" className="mt-6" style={{ fontFamily: `'${bodyFont}', sans-serif`}}>
+                        </Typography.Body1>
+                         <Typography.Body2 className="mt-6" style={{ fontFamily: `'${bodyFont}', sans-serif`}}>
                             Duis Sempere. Duis ac tellus. Curabitur sodales. Phasellus blandit. Vestibulum nisi. Proin vel arcu vitae lorem consectetuer consectetuer. Sed consectetuer, dolor ac tempus iaculis, neque massa viverra lorem, eget semper diam metus et massa.
-                        </Typography>
+                        </Typography.Body2>
                     </Box>
                 </Grid.Item>
-            </Grid>
+            </Grid.Root>
         </Container>
     );
 };

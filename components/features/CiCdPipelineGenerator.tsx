@@ -9,16 +9,8 @@ import React, { useState, useCallback } from 'react';
 import { generateCiCdConfigStream } from '../../services/index.ts';
 import { useNotification } from '../../contexts/NotificationContext.tsx';
 
-// Proprietary UI Framework Components (as per architectural directives)
-import { Button } from '../ui/core/Button';
-import { Select } from '../ui/core/Select';
-import { TextInput } from '../ui/core/TextInput';
-import { Card, CardContent, CardHeader } from '../ui/composite/Card';
-import { PageHeader } from '../ui/composite/PageHeader';
-import { Grid, GridItem } from '../ui/layout/Grid';
-import { Flex } from '../ui/layout/Flex';
-import { MarkdownRenderer } from '../ui/composite/MarkdownRenderer';
-import { LoadingSpinner } from '../ui/core/LoadingSpinner';
+// Shared components
+import { LoadingSpinner, MarkdownRenderer } from '../shared/index.tsx';
 
 // Icons
 import { PaperAirplaneIcon, SparklesIcon } from '../icons.tsx';
@@ -112,71 +104,77 @@ export const CiCdPipelineGenerator: React.FC = () => {
     }, [platform, description, addNotification]);
 
     return (
-        <Flex direction="column" className="h-full p-4 sm:p-6 lg:p-8 text-text-primary space-y-6">
-            <PageHeader
-                icon={<PaperAirplaneIcon />}
-                title="AI CI/CD Pipeline Architect"
-                description="Describe your deployment process and get a modern configuration file."
-            />
+        <div className="h-full flex flex-col p-4 sm:p-6 lg:p-8 text-text-primary space-y-6">
+            <header>
+                <h1 className="text-3xl font-bold flex items-center">
+                    <PaperAirplaneIcon />
+                    <span className="ml-3">AI CI/CD Pipeline Architect</span>
+                </h1>
+                <p className="text-text-secondary mt-1">Describe your deployment process and get a modern configuration file.</p>
+            </header>
             
-            <Grid columns={1} gap={4} className="flex-grow min-h-0">
-                <Card>
-                    <CardContent className="space-y-4">
-                        <Grid columns={3} gap={4}>
-                            <GridItem colSpan={{ base: 3, md: 1 }}>
-                                <Select
-                                    label="Platform"
+            <div className="grid grid-cols-1 gap-4 flex-grow min-h-0">
+                <div className="bg-surface border border-border rounded-lg p-4">
+                    <div className="space-y-4">
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <div className="md:col-span-1">
+                                <label htmlFor="platform-select" className="block text-sm font-medium text-text-secondary mb-1">Platform</label>
+                                <select
+                                    id="platform-select"
                                     value={platform}
-                                    onValueChange={setPlatform}
+                                    onChange={(e) => setPlatform(e.target.value)}
+                                    className="w-full p-2 bg-background border border-border rounded-md"
                                 >
-                                    {PLATFORMS.map(p => <Select.Option key={p} value={p}>{p}</Select.Option>)}
-                                </Select>
-                            </GridItem>
-                            <GridItem colSpan={{ base: 3, md: 2 }}>
-                                <TextInput
-                                    label="Describe Pipeline Stages"
+                                    {PLATFORMS.map(p => <option key={p} value={p}>{p}</option>)}
+                                </select>
+                            </div>
+                            <div className="md:col-span-2">
+                                <label htmlFor="description-input" className="block text-sm font-medium text-text-secondary mb-1">Describe Pipeline Stages</label>
+                                <input
+                                    id="description-input"
+                                    type="text"
                                     value={description}
                                     onChange={(e) => setDescription(e.target.value)}
                                     placeholder={EXAMPLE_DESCRIPTION}
+                                    className="w-full p-2 bg-background border border-border rounded-md"
                                 />
-                            </GridItem>
-                        </Grid>
-                        <Flex justify="center">
-                            <Button
+                            </div>
+                        </div>
+                        <div className="flex justify-center pt-2">
+                            <button
                                 onClick={handleGenerate}
                                 disabled={isLoading}
-                                icon={<SparklesIcon />}
-                                className="w-full max-w-xs"
-                                variant="primary"
+                                className="btn-primary w-full max-w-xs flex items-center justify-center gap-2 px-4 py-2"
                             >
+                                {isLoading ? <LoadingSpinner /> : <SparklesIcon />}
                                 {isLoading ? 'Generating...' : 'Generate Configuration'}
-                            </Button>
-                        </Flex>
-                    </CardContent>
-                </Card>
+                            </button>
+                        </div>
+                    </div>
+                </div>
 
-                <Card className="flex-grow flex flex-col min-h-0">
-                    <CardHeader>
+                <div className="flex-grow flex flex-col min-h-0 bg-surface border border-border rounded-lg">
+                    <div className="p-4 border-b border-border">
                         <h3 className="text-sm font-medium text-text-secondary">Generated Configuration File</h3>
-                    </CardHeader>
-                    <CardContent className="flex-grow relative p-0 overflow-y-auto">
+                    </div>
+                    <div className="flex-grow relative overflow-y-auto">
                         <div className="absolute inset-0 p-4">
                             {isLoading && !config && (
-                                <Flex align="center" justify="center" className="h-full">
+                                <div className="flex items-center justify-center h-full">
                                     <LoadingSpinner />
-                                </Flex>
+                                </div>
                             )}
                             {error && <p className="p-4 text-red-500 font-medium bg-red-500/10 rounded-md">Error: {error}</p>}
                             {config && <MarkdownRenderer content={config} />}
                             {!isLoading && !config && !error && (
-                                <Flex align="center" justify="center" className="h-full text-text-secondary">
+                                <div className="flex items-center justify-center h-full text-text-secondary">
                                     Generated configuration will appear here.
-                                </Flex>
+                                </div>
                             )}
                         </div>
-                    </CardContent>
-                </Card>
-            </Grid>
-        </Flex>
+                    </div>
+                </div>
+            </div>
+        </div>
     );
 };

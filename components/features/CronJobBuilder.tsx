@@ -12,10 +12,11 @@
  */
 
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
-import { CommandLineIcon, SparklesIcon, ClipboardDocumentIcon } from '../icons.tsx';
-import { generateCronFromDescription, explainCronExpression, CronParts } from '../../services/index.ts';
-import { LoadingSpinner } from '../shared/index.tsx';
-import { useNotification } from '../../contexts/NotificationContext.tsx';
+import { CommandLineIcon, SparklesIcon, ClipboardDocumentIcon } from '../icons';
+import { generateCronFromDescription, explainCronExpression } from '../../services/aiService';
+import type { CronParts } from '../../types';
+import { LoadingSpinner } from '../shared';
+import { useNotification } from '../../contexts/NotificationContext';
 
 const minuteOptions = ['*', ...Array.from({ length: 60 }, (_, i) => i)];
 const hourOptions = ['*', ...Array.from({ length: 24 }, (_, i) => i)];
@@ -134,8 +135,7 @@ export const CronJobBuilder: React.FC<{ initialPrompt?: string }> = ({ initialPr
     if (initialPrompt) {
       handleAiGenerate(initialPrompt);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [initialPrompt]);
+  }, [initialPrompt, handleAiGenerate]);
 
   useEffect(() => {
     const getExplanation = async () => {

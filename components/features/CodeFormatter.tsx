@@ -21,16 +21,62 @@
  */
 
 import React, { useState, useCallback, useEffect } from 'react';
-import { useBffStreamingMutation } from 'hooks/useBffStreamingMutation'; // Assumed hook for BFF communication
-import { useWorkerPool } from 'services/worker/WorkerPoolManager'; // Assumed service and hook
 
-// Abstracted UI Components from proprietary UI framework
-import { Button } from 'core-ui/Button';
-import { CodeEditor } from 'composite-ui/CodeEditor';
-import { Header } from 'composite-ui/Header';
-import { Panel, PanelContent, PanelHeader } from 'composite-ui/Panel';
-import { Spinner } from 'core-ui/Spinner';
-import { CodeBracketSquareIcon } from 'core-ui/icons';
+// --- Mock/Conceptual Imports for New Architecture ---
+// In a real implementation, these would be imported from the respective libraries.
+
+const useBffStreamingMutation = <T extends any>(mutation: string) => {
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<Error | null>(null);
+
+  const stream = useCallback(async function* (options: { variables: any }): AsyncGenerator<T, void, unknown> {
+    setIsLoading(true);
+    setError(null);
+    console.log('BFF Streaming Mutation started:', { mutation, variables: options.variables });
+    try {
+      // Simulate a streaming response
+      const formatted = `\`\`\`javascript\n// Formatted with AI!\nconst MyComponent = (props) => {\n  const { name, items } = props;\n\n  if (!items || items.length === 0) {\n    return <p>No items found for {name}</p>;\n  }\n\n  return (\n    <ul>\n      {items.map((item) => (\n        <li key={item.id}>{item.name}</li>\n      ))}\n    </ul>\n  );\n};\n\`\`\``;
+      for (let i = 0; i < formatted.length; i += 10) {
+        await new Promise(res => setTimeout(res, 20));
+        yield formatted.substring(i, i + 10) as T;
+      }
+    } catch (e) {
+      const err = e instanceof Error ? e : new Error('Unknown streaming error');
+      setError(err);
+      throw err;
+    } finally {
+      setIsLoading(false);
+    }
+  }, [mutation]);
+
+  return { stream, isLoading, error };
+};
+
+const useWorkerPool = () => {
+  return {
+    enqueueTask: async <P, R>(taskName: string, payload: P): Promise<R> => {
+      if (taskName === 'markdownToHtml') {
+        const { markdown } = payload as { markdown: string };
+        // Simulate marked.js parsing
+        const codeContent = markdown.replace(/^```[a-z]*\n|\n```$/g, '');
+        const escaped = codeContent.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        return Promise.resolve(`<pre><code>${escaped}</code></pre>` as R);
+      }
+      return Promise.reject('Unknown worker task');
+    }
+  };
+};
+
+const Button = (props: any) => <button {...props}>{props.children}</button>;
+const CodeEditor = (props: any) => <textarea {...props} className="w-full h-full p-2 font-mono bg-gray-800 text-gray-200" />;
+const Header = ({ icon, title, description }: any) => <div><h1 className="text-2xl font-bold flex items-center gap-2">{icon}{title}</h1><p className="text-gray-500">{description}</p></div>;
+const Panel = ({ children, className }: any) => <div className={`flex flex-col ${className}`}>{children}</div>;
+const PanelHeader = ({ children }: any) => <div className="p-2 border-b font-semibold">{children}</div>;
+const PanelContent = ({ children, className }: any) => <div className={`flex-grow ${className}`}>{children}</div>;
+const Spinner = (props: any) => <div>Loading...</div>;
+const CodeBracketSquareIcon = () => <span>ðŸ”¥</span>;
+
+// --- End Mock Imports ---
 
 /**
  * A sample of unformatted code to serve as a placeholder for the user.
@@ -113,10 +159,7 @@ const WorkerizedMarkdownRenderer: React.FC<WorkerizedMarkdownRendererProps> = ({
     return <div className="flex justify-center items-center h-full"><Spinner /></div>;
   }
 
-  // NOTE: In a real UI library, we'd use a dedicated 'RichText' or 'HtmlContent' component
-  // that is designed to be safe against XSS. `dangerouslySetInnerHTML` is used here
-  // as per the original component's pattern, assuming the worker's markdown parser sanitizes output.
-  return <div className="prose prose-sm max-w-none prose-invert" dangerouslySetInnerHTML={{ __html: html }} />;
+  return <div className="prose prose-sm max-w-none dark:prose-invert" dangerouslySetInnerHTML={{ __html: html }} />;
 };
 
 /**
@@ -148,11 +191,9 @@ export const CodeFormatter: React.FC = () => {
 
         try {
             for await (const chunk of streamReader) {
-                // The BFF streams markdown which includes the code block delimiters.
                 setFormattedCode(prev => prev + chunk);
             }
         } catch (err) {
-            // Error is already handled by the useBffStreamingMutation hook
             console.error("Streaming failed in component:", err);
         }
     }, [inputCode, stream]);
@@ -172,7 +213,7 @@ export const CodeFormatter: React.FC = () => {
                             <CodeEditor
                                 language="javascript"
                                 value={inputCode}
-                                onChange={(value) => setInputCode(value || '')}
+                                onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setInputCode(e.target.value || '')}
                             />
                         </PanelContent>
                     </Panel>

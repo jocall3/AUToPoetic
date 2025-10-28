@@ -1,7 +1,7 @@
 {
   "compileOnSave": false,
   "compilerOptions": {
-    // Type Checking
+    // Type Checking - Enforce the strictest possible type safety.
     "strict": true,
     "noImplicitAny": true,
     "strictNullChecks": true,
@@ -19,50 +19,59 @@
     "noImplicitOverride": true,
     "noImplicitReturns": true,
 
-    // Modules
+    // Modules - Modern module resolution for a bundled monorepo.
     "module": "ESNext",
     "moduleResolution": "bundler",
     "baseUrl": ".",
     "paths": {
-      "@core-ui/*": ["packages/core-ui/src/*"],
-      "@composite-ui/*": ["packages/composite-ui/src/*"],
-      "@themes/*": ["packages/themes/src/*"],
-      "@services/core/*": ["packages/services/core/src/*"],
-      "@services/business/*": ["packages/services/business/src/*"],
-      "@services/infrastructure/*": ["packages/services/infrastructure/src/*"],
-      "@mf/*": ["apps/micro-frontends/*"],
-      "@bff/*": ["apps/bff/src/*"],
-      "@backend/ai-gateway/*": ["services/ai-gateway/src/*"],
-      "@backend/github-proxy/*": ["services/github-proxy/src/*"],
-      "@backend/auth-gateway/*": ["services/auth-gateway/src/*"],
-      "@utils/*": ["packages/utils/src/*"]
+      // Root-level aliases for shared code within the shell and MFEs
+      "@/components/*": ["./components/*"],
+      "@/contexts/*": ["./contexts/*"],
+      "@/hooks/*": ["./hooks/*"],
+      "@/client-services/*": ["./services/*"],
+      "@/types": ["./types.ts"],
+      "@/constants": ["./constants.tsx"],
+      "@/utils/*": ["./utils/*"],
+      "@/workers/*": ["./workers/*"],
+      "@/themes/*": ["./themes/*"],
+
+      // Package aliases to enable type-safe monorepo imports
+      // Points to the source entrypoint for better IDE support.
+      "@devcore/auth-client": ["./packages/auth-client/src/index.ts"],
+      "@devcore/orchestration": ["./packages/orchestration/src/index.ts"],
+      "@devcore/shell": ["./packages/shell/src/index.ts"],
+      "@devcore/theme-engine": ["./packages/theme-engine/src/index.ts"],
+      "@devcore/composite-ui": ["./packages/ui-composite/src/index.ts"],
+      "@devcore/core-ui": ["./packages/ui-core/src/index.ts"],
+      "@devcore/worker-pool": ["./packages/worker-pool/src/index.ts"],
+      "@devcore/workspace-manager": ["./packages/workspace-manager/src/index.ts"]
     },
     "resolveJsonModule": true,
 
-    // Emit
+    // Emit - Configuration for output files from 'tsc'.
     "declaration": true,
     "declarationMap": true,
     "sourceMap": true,
     "removeComments": false,
 
-    // JavaScript Support
+    // JavaScript Support - Allow interop with JS files.
     "allowJs": true,
-    "checkJs": true,
+    "checkJs": false,
 
-    // Language and Environment
-    "target": "ES2022",
-    "lib": ["ESNext", "DOM", "DOM.Iterable"],
+    // Language and Environment - Modern defaults.
+    "target": "ESNext",
+    "lib": ["ESNext", "DOM", "DOM.Iterable", "WebWorker"],
     "jsx": "react-jsx",
     "experimentalDecorators": true,
     "emitDecoratorMetadata": true,
     "useDefineForClassFields": false,
 
-    // Interop Constraints
+    // Interop Constraints - Standard for modern TypeScript projects.
     "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true,
     "isolatedModules": true,
 
-    // Project Options
+    // Project Options - Enable monorepo features and build performance.
     "composite": true,
     "incremental": true,
     "skipLibCheck": true

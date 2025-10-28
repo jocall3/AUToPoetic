@@ -4,6 +4,8 @@
  * @license Apache-2.0
  * @see @/hooks/useTheme.ts for theme application logic.
  * @see @/types.ts for SemanticColorTheme and ColorTheme type definitions.
+ * @security This component sends user-provided prompts and image data to a secure BFF. It does not handle API keys directly.
+ * @performance Image processing is offloaded to a web worker. AI generation is a network-bound operation handled by the BFF.
  */
 
 import React, { useState, useCallback, useEffect, useRef } from 'react';
@@ -11,6 +13,7 @@ import { ArrowDownTrayIcon, PhotoIcon, SwatchIcon } from '../icons.tsx';
 import type { SemanticColorTheme, ColorTheme } from '../../types.ts';
 import { LoadingSpinner } from '../shared/index.tsx';
 import { useTheme } from '../../hooks/useTheme.ts';
+import { useNotification } from '../../contexts/NotificationContext.tsx';
 
 // --- Mock Implementations for Architectural Transformation ---
 
@@ -85,6 +88,8 @@ const workerPool = {
   },
 };
 
+// --- Sub-components for UI clarity ---
+
 /**
  * Displays a single color from the generated theme palette or roles.
  * @param {object} props - The component props.
@@ -140,6 +145,7 @@ export const ThemeDesigner: React.FC = () => {
     const [error, setError] = useState('');
     const fileInputRef = useRef<HTMLInputElement>(null);
     const [, , applyCustomTheme] = useTheme();
+    const { addNotification } = useNotification();
 
     /**
      * Handles the AI theme generation by sending a request to the BFF.
@@ -170,14 +176,16 @@ export const ThemeDesigner: React.FC = () => {
                 imageBase64: imagePart,
             });
             setTheme(generateTheme);
+            addNotification('New theme generated!', 'success');
         } catch (err) {
             const errorMessage = err instanceof Error ? err.message : "An unknown error occurred.";
             setError(errorMessage);
+            addNotification(`Theme generation failed: ${errorMessage}`, 'error');
             console.error("Theme generation failed:", err);
         } finally {
             setIsLoading(false);
         }
-    }, [prompt, image]);
+    }, [prompt, image, addNotification]);
     
     /**
      * Processes an uploaded file by converting it to Base64 using a Web Worker.
@@ -194,10 +202,11 @@ export const ThemeDesigner: React.FC = () => {
                 setPrompt(`A theme based on the uploaded image: ${file.name}`);
             } catch (err) {
                 setError('Could not process image file.');
+                addNotification('Could not process image file.', 'error');
                 console.error("File to Base64 conversion failed:", err);
             }
         }
-    }, []);
+    }, [addNotification]);
     
     // Generate an initial theme when the component first mounts.
     useEffect(() => {
@@ -221,6 +230,7 @@ export const ThemeDesigner: React.FC = () => {
             border: theme.theme.border.value,
         };
         applyCustomTheme(colorsToApply, theme.mode);
+        addNotification(`Theme '${theme.palette.primary.name}' applied!`, 'success');
     };
 
     return (
@@ -233,10 +243,10 @@ export const ThemeDesigner: React.FC = () => {
                 <div className="md:col-span-1 flex flex-col gap-4 bg-surface border border-border p-6 rounded-lg overflow-y-auto">
                     <h3 className="text-xl font-bold">Describe or Upload</h3>
                     <textarea value={prompt} onChange={e => setPrompt(e.target.value)} className="p-2 bg-background border border-border rounded-md resize-none text-sm h-24" placeholder="e.g., A light, airy theme for a blog" />
-                     <div className="relative border border-dashed border-border rounded-lg p-4 text-center">
+                     <div className="relative border-2 border-dashed border-border rounded-lg p-4 text-center hover:border-primary transition-colors">
                         <input type="file" ref={fileInputRef} onChange={handleFileChange} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" accept="image/*" />
                         <PhotoIcon/>
-                        <p className="text-sm mt-1 truncate">{image ? `Image: ${image.name}` : 'Upload an image (optional)'}</p>
+                        <p className="text-sm mt-1 truncate text-text-secondary">{image ? `Image: ${image.name}` : 'Upload an image (optional)'}</p>
                     </div>
                     <div className="flex gap-2">
                         <button onClick={handleGenerate} disabled={isLoading} className="btn-primary flex-grow flex items-center justify-center gap-2 px-4 py-2">
@@ -258,7 +268,7 @@ export const ThemeDesigner: React.FC = () => {
                         </div>
                     )}
                 </div>
-                <div className="md:col-span-1 rounded-lg p-8 overflow-y-auto border border-border transition-colors duration-500" style={{ backgroundColor: theme?.theme.background.value, color: theme?.theme.textPrimary.value }}>
+                <div className="md:col-span-1 rounded-lg p-8 overflow-y-auto border-2 border-dashed border-border transition-colors duration-500" style={{ backgroundColor: theme?.theme.background.value, color: theme?.theme.textPrimary.value }}>
                      <h3 className="text-2xl font-bold mb-6">Live Preview</h3>
                      {theme ? (
                          <div className="p-6 rounded-lg grid grid-cols-1 md:grid-cols-2 gap-6 transition-colors duration-500" style={{ backgroundColor: theme.theme.surface.value }}>

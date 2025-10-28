@@ -13,7 +13,7 @@
 
 import React, { useState, useMemo, useCallback } from 'react';
 import { useNotification } from '../../contexts/NotificationContext';
-import { useInfrastructure } from '../../hooks/useInfrastructure';
+import { downloadFile } from '../../services/fileUtils';
 import {
   Panel,
   Header,
@@ -61,7 +61,6 @@ const INITIAL_SETTINGS: GridSettings = { rows: 3, cols: 4, rowGap: 1, colGap: 1 
 export const CssGridEditor: React.FC = () => {
   const [settings, setSettings] = useState<GridSettings>(INITIAL_SETTINGS);
   const { addNotification } = useNotification();
-  const { fileDownloader } = useInfrastructure();
 
   /**
    * Updates a specific grid setting in the component's state.
@@ -99,14 +98,12 @@ export const CssGridEditor: React.FC = () => {
 
   /**
    * Downloads the generated CSS code as a `.css` file.
-   * Uses the abstracted `fileDownloader` service from the infrastructure layer.
    * @function
    */
   const handleDownload = useCallback(() => {
-    fileDownloader.downloadTextFile(cssCode, 'grid.css', { mimeType: 'text/css' })
-      .then(() => addNotification('CSS file downloaded.', 'success'))
-      .catch(err => addNotification(`Download failed: ${err.message}`, 'error'));
-  }, [cssCode, fileDownloader, addNotification]);
+    downloadFile(cssCode, 'grid.css', 'text/css');
+    addNotification('CSS file downloaded.', 'success');
+  }, [cssCode, addNotification]);
   
   /**
    * Renders the visual grid preview based on current settings.

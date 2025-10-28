@@ -1,108 +1,122 @@
 /**
  * @file This Web Worker is dedicated to offloading computationally intensive JSON parsing
- *       from the main thread, enhancing UI responsiveness and overall application performance.
- *       It listens for JSON strings, parses them, and posts the result back.
+ * from the main thread. It conforms to the protocol expected by the WorkerPoolManager,
+ * handling 'PARSE_JSON' tasks and ensuring UI responsiveness.
+ * @module workers/json-parser
+ * @see {services/worker/workerPoolManager.ts} for the manager that consumes this worker.
  */
 
+// --- Type Definitions for Worker Communication ---
+
 /**
- * Type definition for messages received by the JSON parsing worker.
- * @interface JsonWorkerInput
- * @property {string} jsonString The JSON string to be parsed.
- * @property {string} [requestId] An optional unique identifier for the request,
- *                                 allowing the main thread to correlate responses.
+ * @interface WorkerTask
+ * @description The expected structure of an incoming task message from the WorkerPoolManager.
+ * @template T - The type of the payload.
  */
-interface JsonWorkerInput {
+interface WorkerTask<T = any> {
+  /** The unique identifier for the task. */
+  id: string;
+  /** The type of task to be performed (e.g., 'PARSE_JSON'). */
+  type: string;
+  /** The data required for the task. */
+  payload: T;
+}
+
+/**
+ * @interface WorkerResponse
+ * @description The structure of a response message sent back to the WorkerPoolManager.
+ * @template R - The type of the result.
+ */
+interface WorkerResponse<R = any> {
+  /** The unique identifier of the task this response corresponds to. */
+  taskId: string;
+  /** The result of the successful computation. */
+  result?: R;
+  /** An error object if the task failed. */
+  error?: { message: string; stack?: string };
+}
+
+/**
+ * @interface ParseJsonPayload
+ * @description The specific payload expected for a 'PARSE_JSON' task.
+ */
+interface ParseJsonPayload {
   jsonString: string;
-  requestId?: string;
 }
 
-/**
- * Type definition for messages posted back by the JSON parsing worker.
- * @interface JsonWorkerOutput
- * @property {any | null} parsedData The parsed JSON object if successful, otherwise `null`.
- * @property {string | null} error An error message if parsing failed, otherwise `null`.
- * @property {string} [requestId] The original request ID, echoed back for correlation.
- */
-interface JsonWorkerOutput {
-  parsedData: any | null;
-  error: string | null;
-  requestId?: string;
-}
+// --- Worker Implementation ---
 
 /**
- * Event listener for messages sent to the Web Worker.
- * When the main thread sends a message containing a JSON string, this listener
- * attempts to parse the string and sends the result (parsed data or an error)
- * back to the main thread.
- * @param {MessageEvent} event The message event containing data from the main thread.
- * @listens {MessageEvent}
- * @performance Parsing JSON, especially large strings, can be CPU-intensive.
- *            Offloading to a Web Worker prevents blocking the main thread,
- *            improving UI responsiveness.
- * @security This worker only processes data sent directly to it and does not access
- *           any external resources or global objects beyond basic JavaScript functions.
- *           Input validation is performed to prevent unexpected behavior.
+ * Logs a message to the worker's console for debugging purposes.
+ * @param {string} message The message to log.
+ * @param {any[]} [args] Additional arguments to log.
  */
-self.onmessage = (event: MessageEvent<JsonWorkerInput>) => {
-  const { jsonString, requestId } = event.data;
-
-  /**
-   * Represents the response object to be sent back to the main thread.
-   * @type {JsonWorkerOutput}
-   */
-  let response: JsonWorkerOutput;
-
-  /**
-   * Logs a message to the worker's console (which can be viewed in browser dev tools).
-   * @param {string} message The message to log.
-   * @param {any[]} [args] Additional arguments to log.
-   */
-  const logWorkerMessage = (message: string, ...args: any[]): void => {
-    // In a production environment, this might integrate with a dedicated worker telemetry service.
-    // For now, simple console logging is sufficient for demonstration and debugging.
-    console.log(`[JSON_PARSER_WORKER] ${message}`, ...args);
-  };
-
-  if (typeof jsonString !== 'string') {
-    response = {
-      parsedData: null,
-      error: 'Invalid input: jsonString must be a string.',
-      requestId,
-    };
-    logWorkerMessage('Received non-string input.', { type: typeof jsonString, requestId });
-  } else if (jsonString.trim() === '') {
-    response = {
-      parsedData: null,
-      error: 'Invalid input: jsonString cannot be empty.',
-      requestId,
-    };
-    logWorkerMessage('Received empty JSON string.', { requestId });
-  } else {
-    try {
-      /**
-       * The result of the JSON parsing operation.
-       * @type {any}
-       */
-      const parsed = JSON.parse(jsonString);
-      response = {
-        parsedData: parsed,
-        error: null,
-        requestId,
-      };
-      logWorkerMessage('Successfully parsed JSON.', { requestId, dataLength: jsonString.length });
-    } catch (e: any) {
-      response = {
-        parsedData: null,
-        error: `JSON parsing failed: ${e.message}`,
-        requestId,
-      };
-      logWorkerMessage('JSON parsing failed.', { requestId, errorMessage: e.message, dataLength: jsonString.length });
-    }
-  }
-
-  // Post the response back to the main thread.
-  self.postMessage(response);
+const log = (message: string, ...args: any[]): void => {
+  console.log(`[JSON_PARSER_WORKER] ${new Date().toISOString()}: ${message}`, ...args);
 };
 
-// Add a simple initialization log for the worker.
-logWorkerMessage('JSON Parsing Web Worker initialized and ready to receive messages.');
+/**
+ * Main message handler for the worker.
+ * Listens for 'PARSE_JSON' tasks, processes them, and posts the result or an error back to the main thread.
+ * @param {MessageEvent<WorkerTask<ParseJsonPayload>>} event The incoming message event from the main thread.
+ * @listens MessageEvent
+ */
+self.onmessage = (event: MessageEvent<WorkerTask<ParseJsonPayload>>) => {
+  const { id: taskId, type, payload } = event.data;
+
+  if (type !== 'PARSE_JSON') {
+    const errorResponse: WorkerResponse = {
+      taskId,
+      error: { message: `Unknown task type received: '${type}'. This worker only handles 'PARSE_JSON'.` },
+    };
+    log(`Error: Received unknown task type '${type}' for task ID ${taskId}.`);
+    self.postMessage(errorResponse);
+    return;
+  }
+
+  const { jsonString } = payload;
+
+  if (typeof jsonString !== 'string') {
+    const errorResponse: WorkerResponse = {
+      taskId,
+      error: { message: 'Invalid payload: jsonString must be a string.' },
+    };
+    log(`Error: Invalid payload for task ID ${taskId}. Input was not a string.`, { type: typeof jsonString });
+    self.postMessage(errorResponse);
+    return;
+  }
+
+  if (jsonString.trim() === '') {
+    // For empty strings, we can either error or return a specific result like null.
+    // Returning null is often more useful than an error for empty inputs.
+    const successResponse: WorkerResponse<null> = {
+      taskId,
+      result: null,
+    };
+    log(`Parsed empty JSON string for task ID ${taskId} as null.`);
+    self.postMessage(successResponse);
+    return;
+  }
+
+  try {
+    const parsedData = JSON.parse(jsonString);
+    const successResponse: WorkerResponse<any> = {
+      taskId,
+      result: parsedData,
+    };
+    log(`Successfully parsed JSON for task ID ${taskId}.`, { dataLength: jsonString.length });
+    self.postMessage(successResponse);
+  } catch (e: any) {
+    const errorResponse: WorkerResponse = {
+      taskId,
+      error: {
+        message: `JSON parsing failed: ${e.message}`,
+        stack: e.stack,
+      },
+    };
+    log(`Error: JSON parsing failed for task ID ${taskId}.`, { errorMessage: e.message });
+    self.postMessage(errorResponse);
+  }
+};
+
+log('JSON Parsing Worker initialized and ready for tasks.');
