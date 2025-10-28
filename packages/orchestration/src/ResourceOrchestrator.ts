@@ -1,10 +1,10 @@
 /**
  * @file Implements the Resource Orchestrator service, a proactive resource management layer.
- * @module services/orchestration/ResourceOrchestrator
+ * @module packages/orchestration/src/ResourceOrchestrator
  *
  * @description This service is designed to improve perceived application performance
  * by intelligently pre-fetching resources (Micro-Frontends, data, AI configurations)
- * based on predictive analysis of user navigation patterns.
+ * based on predictive analysis of user navigation patterns and direct user-intent hints (e.g., hover).
  *
  * @security This service initiates network requests based on predictions. Care must be taken
  * to ensure that pre-fetched resources do not expose sensitive data or create unnecessary
@@ -141,8 +141,6 @@ export class ResourceOrchestrator {
   private preloadedResources: Set<string> = new Set();
   private readonly dependencies: ResourceOrchestratorDependencies;
 
-  private static instance: ResourceOrchestrator;
-
   /**
    * @constructor
    * @param {ResourceOrchestratorDependencies} dependencies - Injected services for handling resource operations.
@@ -151,7 +149,7 @@ export class ResourceOrchestrator {
    */
   constructor(dependencies: ResourceOrchestratorDependencies) {
     this.dependencies = dependencies;
-    console.log('ResourceOrchestrator instantiated.');
+    console.log('[ResourceOrchestrator] Service instantiated.');
   }
 
   /**
@@ -164,16 +162,16 @@ export class ResourceOrchestrator {
    */
   public initialize(): void {
     if (this.isInitialized) {
-      console.warn('ResourceOrchestrator is already initialized.');
+      console.warn('[ResourceOrchestrator] Service is already initialized.');
       return;
     }
 
     // In a real implementation, load history from a persistent store like IndexedDB.
     // this.loadHistory().then(() => this.trainModel());
-    this.trainModel();
+    this.trainModel(); // Train with empty history initially
 
     this.isInitialized = true;
-    console.log('ResourceOrchestrator initialized and ready to predict.');
+    console.log('[ResourceOrchestrator] Service initialized and ready to predict.');
   }
 
   /**
@@ -205,10 +203,29 @@ export class ResourceOrchestrator {
     this.trainModel();
     this.runPredictionCycle();
   }
+  
+  /**
+   * @method prefetchFeature
+   * @description A public method to explicitly trigger a prefetch for a feature, typically based on
+   * a direct user-intent signal like a mouse hover.
+   * @param {string} featureId - The unique ID of the feature (MFE) to prefetch.
+   * @returns {void}
+   * @example
+   * // In a UI component like a dock
+   * <div onMouseEnter={() => resourceOrchestrator.prefetchFeature('ai-code-explainer')}>...</div>
+   */
+  public prefetchFeature(featureId: string): void {
+      if (this.preloadedResources.has(featureId)) {
+          return;
+      }
+      console.log(`[Orchestrator] Explicit pre-fetch requested for MFE:${featureId}`);
+      this.preloadedResources.add(featureId);
+      this.dependencies.mfeLoader.prefetch(featureId);
+  }
 
   /**
    * @method shutdown
-   * @description Gracefully stops the orchestrator.
+   * @description Gracefully stops the orchestrator, clearing state and history.
    * @returns {void}
    */
   public shutdown(): void {
@@ -216,11 +233,11 @@ export class ResourceOrchestrator {
     this.navigationHistory = [];
     this.transitionModel.clear();
     this.preloadedResources.clear();
-    console.log('ResourceOrchestrator has been shut down.');
+    console.log('[ResourceOrchestrator] Service has been shut down.');
   }
 
   /**
-   * @method _trainModel
+   * @method trainModel
    * @private
    * @description Updates the internal prediction model based on the navigation history.
    * This implementation uses a simple frequency-based transition model (first-order Markov chain).
@@ -228,22 +245,13 @@ export class ResourceOrchestrator {
    * As history is capped, this remains fast.
    */
   private trainModel(): void {
-    if (this.navigationHistory.length < 2) return;
-
-    const lastEvent = this.navigationHistory[this.navigationHistory.length - 1];
-    const secondLastEvent = this.navigationHistory[this.navigationHistory.length - 2];
-
-    if (secondLastEvent.to !== lastEvent.from) {
-      // This indicates a non-linear navigation, we'll model from the last known 'to'.
-      const fromView = secondLastEvent.to;
-      const toView = lastEvent.to;
-      this.updateTransition(fromView, toView);
-    } else {
-      const fromView = lastEvent.from;
-      const toView = lastEvent.to;
-      if (fromView) {
-        this.updateTransition(fromView, toView);
-      }
+    // This simple model just re-builds from the recent history on each navigation.
+    // A more complex model could be truly incremental.
+    this.transitionModel.clear();
+    for (let i = 1; i < this.navigationHistory.length; i++) {
+        const from = this.navigationHistory[i - 1].to;
+        const to = this.navigationHistory[i].to;
+        this.updateTransition(from, to);
     }
   }
 
@@ -264,7 +272,7 @@ export class ResourceOrchestrator {
   }
 
   /**
-   * @method _runPredictionCycle
+   * @method runPredictionCycle
    * @private
    * @description Initiates a prediction and pre-fetching cycle, ideally during browser idle time.
    */
@@ -279,12 +287,12 @@ export class ResourceOrchestrator {
     if ('requestIdleCallback' in window) {
       window.requestIdleCallback(handler);
     } else {
-      setTimeout(handler, 100); // Fallback for older browsers
+      setTimeout(handler, 200); // Fallback for older browsers
     }
   }
 
   /**
-   * @method _generatePredictions
+   * @method generatePredictions
    * @private
    * @description Analyzes the current state to predict the user's next required resources.
    * @returns {Prediction[]} An array of resource predictions, sorted by confidence.
@@ -306,9 +314,8 @@ export class ResourceOrchestrator {
     for (const [nextView, count] of transitions.entries()) {
       const confidence = count / totalTransitions;
 
-      // Simple mapping from a view ID to a resource ID. A real system would use a manifest.
-      // This assumes a 1:1 mapping between a view and its MFE.
-      const mfeResourceId = `mfe-${nextView}`;
+      // The view ID is the MFE ID.
+      const mfeResourceId = nextView;
       if (!this.preloadedResources.has(mfeResourceId)) {
         predictions.push({
           resourceId: mfeResourceId,
@@ -323,32 +330,30 @@ export class ResourceOrchestrator {
   }
 
   /**
-   * @method _executePrefetching
+   * @method executePrefetching
    * @private
    * @description Takes a list of predictions and initiates the pre-fetching process.
    * @param {Prediction[]} predictions - An array of sorted resource predictions.
    */
   private executePrefetching(predictions: Prediction[]): void {
-    for (const prediction of predictions) {
-      if (this.preloadedResources.has(prediction.resourceId)) {
-        continue;
-      }
+    // Only prefetch the top prediction to be conservative with bandwidth.
+    const topPrediction = predictions[0];
 
-      console.log(`[Orchestrator] Pre-fetching ${prediction.resourceType}:${prediction.resourceId} with confidence ${prediction.confidence.toFixed(2)}`);
-      this.preloadedResources.add(prediction.resourceId);
+    if (topPrediction && !this.preloadedResources.has(topPrediction.resourceId)) {
+        console.log(`[Orchestrator] Pre-fetching ${topPrediction.resourceType}:${topPrediction.resourceId} with confidence ${topPrediction.confidence.toFixed(2)}`);
+        this.preloadedResources.add(topPrediction.resourceId);
 
-      switch (prediction.resourceType) {
-        case ResourceType.MFE:
-          // Assuming MFE ID is derived from the resource ID, e.g., 'mfe-Dashboard' -> 'Dashboard'
-          this.dependencies.mfeLoader.prefetch(prediction.resourceId.replace('mfe-', ''));
-          break;
-        case ResourceType.DATA:
-          this.dependencies.dataFetcher.prefetchQuery(prediction.resourceId.replace('data-', ''));
-          break;
-        case ResourceType.AI_CONFIG:
-          this.dependencies.aiConfigService.prefetchConfig(prediction.resourceId.replace('ai-config-', ''));
-          break;
-      }
+        switch (topPrediction.resourceType) {
+            case ResourceType.MFE:
+              this.dependencies.mfeLoader.prefetch(topPrediction.resourceId);
+              break;
+            case ResourceType.DATA:
+              this.dependencies.dataFetcher.prefetchQuery(topPrediction.resourceId);
+              break;
+            case ResourceType.AI_CONFIG:
+              this.dependencies.aiConfigService.prefetchConfig(topPrediction.resourceId);
+              break;
+        }
     }
   }
 }
