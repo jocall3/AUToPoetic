@@ -7,68 +7,60 @@
  *              Offloading this to a worker keeps the main thread free and responsive.
  */
 
+// Since workers run in a separate scope, we redefine necessary types here for self-containment.
+// In a more advanced build system, these could be shared via a dedicated types package.
+
 /**
- * @interface PromptBuilderMessage
- * @description Defines the structure of messages received by the prompt builder worker from the main thread.
- * @property {string} type - The type of message, indicating the task for the worker (e.g., 'buildPrompt').
- * @property {Object} data - The payload containing all necessary information for prompt construction.
- * @property {string} data.userPrompt - The direct textual input from the user.
- * @property {string} [data.systemInstruction] - Pre-formatted system-level instructions for the AI, often derived from an AI personality.
- * @property {Record<string, any>} [data.context] - Additional contextual data to be included in the prompt (e.g., code, diffs, JSON). Keys should describe the content.
- * @property {Object} [data.formatOptions] - Options influencing the final formatting of the prompt.
- * @property {'markdown' | 'json' | 'text'} [data.formatOptions.responseFormat] - The desired output format for the AI's response (e.g., 'markdown', 'json').
- * @property {string} [data.formatOptions.additionalInstructions] - Any final, specific instructions to append to the prompt.
- * @property {string} requestId - A unique identifier to correlate the worker's response with the originating request on the main thread.
+ * @interface SystemPrompt
+ * @description Defines a configurable AI personality, including persona, rules, and examples.
  */
-interface PromptBuilderMessage {
-    type: 'buildPrompt';
-    data: {
-        userPrompt: string;
-        systemInstruction?: string;
-        context?: Record<string, any>;
-        formatOptions?: {
-            responseFormat?: 'markdown' | 'json' | 'text';
-            additionalInstructions?: string;
-        };
-        requestId: string;
-    };
+interface SystemPrompt {
+  id: string;
+  name: string;
+  persona: string;
+  rules: string[];
+  outputFormat: 'json' | 'markdown' | 'text';
+  exampleIO: { input: string; output: string }[];
 }
 
 /**
- * @interface PromptBuilderResponse
- * @description Defines the structure of messages sent from the prompt builder worker back to the main thread.
- * @property {'promptBuilt' | 'error'} type - Indicates whether the prompt was successfully built or an error occurred.
- * @property {string} requestId - The unique identifier of the original request, for correlation.
- * @property {Object} [payload] - Contains the result if the operation was successful.
- * @property {string} payload.finalPrompt - The complete, constructed AI prompt string.
- * @property {string} [error] - The error message if the operation failed.
+ * @function formatSystemPromptToString
+ * @description Converts a structured SystemPrompt object into a single, formatted string.
+ * @param {SystemPrompt} prompt The structured `SystemPrompt` object.
+ * @returns {string} A formatted string ready for use as a system instruction.
  */
-interface PromptBuilderResponse {
-    type: 'promptBuilt' | 'error';
-    requestId: string;
-    payload?: {
-        finalPrompt: string;
-    };
-    error?: string;
+function formatSystemPromptToString(prompt: SystemPrompt): string {
+    if (!prompt) return "You are a helpful assistant.";
+
+    let instruction = `**PERSONA:**\n${prompt.persona}\n\n`;
+
+    if (prompt.rules && prompt.rules.length > 0) {
+        const validRules = prompt.rules.filter(rule => rule && rule.trim() !== '');
+        if (validRules.length > 0) {
+            instruction += `**RULES:**\n${validRules.map(rule => `- ${rule}`).join('\n')}\n\n`;
+        }
+    }
+
+    if (prompt.outputFormat) {
+        instruction += `**OUTPUT FORMAT:**\nYou must respond in ${prompt.outputFormat} format.\n\n`;
+    }
+
+    if (prompt.exampleIO && prompt.exampleIO.length > 0) {
+        instruction += `**EXAMPLES:**\n`;
+        prompt.exampleIO.forEach(ex => {
+            if (ex.input && ex.output) {
+                instruction += `User Input:\n\`\`\`\n${ex.input}\n\`\`\`\n`;
+                instruction += `Your Output:\n\`\`\`\n${ex.output}\n\`\`\`\n---\n`;
+            }
+        });
+    }
+
+    return instruction.trim();
 }
 
 /**
  * @function buildFinalPrompt
  * @description Assembles a comprehensive AI prompt string from various components.
- *              This function ensures that system instructions, contextual data, and user queries
- *              are combined coherently and efficiently, often in Markdown for readability.
- * @param {string} userPrompt - The direct input from the user.
- * @param {string} [systemInstruction] - Pre-formatted system instructions for the AI.
- * @param {Record<string, any>} [context] - Additional data (e.g., code snippets, diffs) to embed.
- * @param {Object} [formatOptions] - Options for structuring the final prompt.
- * @param {'markdown' | 'json' | 'text'} [formatOptions.responseFormat] - Desired AI response format.
- * @param {string} [formatOptions.additionalInstructions] - Final instructions for the AI.
- * @returns {string} The fully constructed and formatted AI prompt string.
- * @security This function operates on strings and objects received. No direct execution of
- *           user-provided code is performed. Input sanitization should occur before passing
- *           data to this worker if it originates from untrusted sources and is not simply text.
- * @performance Optimized for string concatenation; avoids excessive intermediate string creations.
- *              Runs in a Web Worker to prevent blocking the main thread.
  */
 function buildFinalPrompt(
     userPrompt: string,
@@ -129,9 +121,7 @@ function buildFinalPrompt(
             finalPromptParts.push(formatOptions.additionalInstructions.trim());
         }
     }
-
-    // Join all parts, ensuring no empty lines unless explicitly desired by double newlines.
-    // Filter out empty strings to prevent extra newlines from `join`.
+    
     return finalPromptParts.filter(part => part.trim().length > 0).join('\n\n').trim();
 }
 
@@ -139,44 +129,33 @@ function buildFinalPrompt(
  * @event onmessage
  * @description Listens for messages from the main thread, processes them to build an AI prompt,
  *              and posts the constructed prompt or an error back to the main thread.
- * @param {MessageEvent<PromptBuilderMessage>} event - The message event containing the prompt construction request.
- * @listens MessageEvent
- * @returns {void}
  */
-self.onmessage = (event: MessageEvent<PromptBuilderMessage>) => {
-    const { type, data, requestId } = event.data;
+self.onmessage = (event: MessageEvent) => {
+    const { id, type, payload } = event.data;
 
-    if (type === 'buildPrompt') {
-        try {
-            const finalPrompt = buildFinalPrompt(
-                data.userPrompt,
-                data.systemInstruction,
-                data.context,
-                data.formatOptions
-            );
-
-            const response: PromptBuilderResponse = {
-                type: 'promptBuilt',
-                requestId,
-                payload: {
-                    finalPrompt,
-                },
-            };
-            self.postMessage(response);
-        } catch (e: any) {
-            const errorResponse: PromptBuilderResponse = {
-                type: 'error',
-                requestId,
-                error: e.message || 'Unknown error during prompt construction.',
-            };
-            self.postMessage(errorResponse);
+    try {
+        let result: any;
+        switch (type) {
+            case 'format-prompt':
+                result = formatSystemPromptToString(payload);
+                break;
+            case 'build-prompt':
+                if (!payload || !payload.userPrompt) {
+                    throw new Error("Payload for 'build-prompt' must include a 'userPrompt'.");
+                }
+                result = buildFinalPrompt(
+                    payload.userPrompt,
+                    payload.systemInstruction,
+                    payload.context,
+                    payload.formatOptions
+                );
+                break;
+            default:
+                throw new Error(`Unknown task type: ${type}`);
         }
-    } else {
-        const errorResponse: PromptBuilderResponse = {
-            type: 'error',
-            requestId,
-            error: `Unknown message type: ${type}`,
-        };
-        self.postMessage(errorResponse);
+
+        self.postMessage({ taskId: id, result });
+    } catch (error: any) {
+        self.postMessage({ taskId: id, error: error.message });
     }
 };
