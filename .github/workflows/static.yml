@@ -1,4 +1,4 @@
-name: Deploy static site to GitHub Pages with Gemini API call
+name: Deploy static site to GitHub Pages with Gemini API
 
 on:
   push:
@@ -18,28 +18,32 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repository using PAT
+      # 1️⃣ Checkout repo using PAT
+      - name: Checkout repository
         uses: actions/checkout@v4
         with:
           token: ${{ secrets.GH_PAT }}
-          submodules: false  # skip fetching submodules if not needed
+          submodules: false
 
+      # 2️⃣ Setup PNPM
       - name: Setup PNPM
         uses: pnpm/action-setup@v3
         with:
           version: 10
 
-      - name: Install dependencies (workspace)
+      # 3️⃣ Install dependencies from local workspace
+      - name: Install dependencies
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GH_PAT }}
         run: pnpm install --no-frozen-lockfile
 
+      # 4️⃣ Call Gemini API
       - name: Call Gemini API
         env:
           GEMINI_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: |
           echo "Calling Gemini API..."
-          RESPONSE=$(curl -s -o response.json -w "%{http_code}" \
+          STATUS=$(curl -s -o response.json -w "%{http_code}" \
             -H "x-goog-api-key: $GEMINI_KEY" \
             -H "Content-Type: application/json" \
             -X POST \
@@ -54,8 +58,8 @@ jobs:
             }' \
             "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent")
 
-          if [ "$RESPONSE" != "200" ]; then
-            echo "Gemini API call failed with status $RESPONSE"
+          if [ "$STATUS" != "200" ]; then
+            echo "Gemini API call failed with status $STATUS"
             cat response.json
             exit 1
           fi
@@ -63,9 +67,11 @@ jobs:
           echo "Gemini API call succeeded"
           cat response.json
 
+      # 5️⃣ Build the static app
       - name: Build static app
         run: pnpm build
 
+      # 6️⃣ Upload artifact for deployment
       - name: Upload build artifact
         uses: actions/upload-pages-artifact@v3
         with:
@@ -78,6 +84,7 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
+      # Deploy to GitHub Pages
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
