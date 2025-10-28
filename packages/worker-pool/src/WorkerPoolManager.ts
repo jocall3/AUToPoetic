@@ -107,7 +107,7 @@ interface ManagedWorker {
  * // Submit a task
  * async function parseMarkdown(markdownText) {
  *   try {
- *     const html = await workerPool.submitTask<string, string>('markdown-to-html', markdownText);
+ *     const html = await workerPool.submitTask<string, { markdown: string }>('markdown-to-html', { markdown: markdownText });
  *     console.log('Converted HTML:', html);
  *   } catch (error) {
  *     console.error('Markdown conversion failed:', error);
@@ -162,9 +162,9 @@ export class WorkerPoolManager {
    * Private constructor to enforce the singleton pattern.
    * @private
    * @param {number} [poolSize] - The number of workers to create. Defaults to `navigator.hardwareConcurrency`.
-   * @param {string} [workerScriptPath] - The path to the worker script. Defaults to './worker-script.js'.
+   * @param {string} [workerScriptPath] - The path to the worker script. Defaults to './generic.worker.ts'.
    */
-  private constructor(poolSize?: number, workerScriptPath: string = './worker-script.js') {
+  private constructor(poolSize?: number, workerScriptPath: string = './generic.worker.ts') {
     this.poolSize = poolSize || navigator.hardwareConcurrency || 4;
 
     // Using import.meta.url is the modern way to resolve paths relative to the current module.
@@ -221,14 +221,14 @@ export class WorkerPoolManager {
    * The task is queued and will be processed by the next available worker.
    *
    * @public
-   * @template T The type of the payload data.
    * @template R The expected type of the result data.
+   * @template T The type of the payload data.
    * @param {string} type - The type of task to perform (e.g., 'markdown-to-html').
    * @param {T} payload - The data for the task. Must be serializable.
    * @returns {Promise<R>} A promise that resolves with the result of the task or rejects with an error.
    * @throws {Error} If the worker pool has been terminated.
    */
-  public submitTask<T, R>(type: string, payload: T): Promise<R> {
+  public submitTask<R, T>(type: string, payload: T): Promise<R> {
     const id = `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
     const task: WorkerTask<T> = { id, type, payload };
 
