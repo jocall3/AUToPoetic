@@ -1,0 +1,30 @@
+name: temp-fix-workflows
+on:
+  push:
+    branches: [ autocommit-all ]
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout WITH submodules (once)
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GH_PAT }}
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Remove .gitmodules entirely (optional, only if you want submodules gone after)
+        run: |
+          if [ -f .gitmodules ]; then
+            git rm -f .gitmodules || true
+            rm -rf .git/modules/* || true
+            git commit -m "remove gitmodules after restore" || true
+            git push origin autocommit-all
+          fi
+
+      - name: Delete this workflow (self destruct)
+        run: |
+          git rm .github/workflows/temp-fix-workflows.yml
+          git commit -m "cleanup: remove temp fix workflow"
+          git push origin autocommit-all
