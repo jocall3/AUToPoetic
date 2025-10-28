@@ -1,1 +1,253 @@
-scalar JSONscalar Datescalar DateTimetype User {  id: ID!  email: String!  displayName: String  photoURL: String}type AuthPayload {  token: String!  user: User!}input LoginInput {  email: String!  password: String!}type GitHubRepo {  id: ID!  name: String!  fullName: String!  private: Boolean!  htmlUrl: String!  description: String  owner: String!}type GitHubFile {  path: String!  content: String!  sha: String}input GitHubCommitFileInput {  owner: String!  repo: String!  path: String!  content: String!  message: String!  branch: String}type JiraIssue {  id: ID!  key: String!  self: String!  url: String  summary: String  issueType: String  status: String  projectKey: String}input JiraCreateIssueInput {  projectKey: String!  summary: String!  description: String  issueType: String!  assigneeEmail: String  priority: String  labels: [String!]}type SlackMessageResponse {  ok: Boolean!  channel: String  ts: String  message: String}input SlackPostMessageInput {  channel: String!  text: String!  username: String  iconEmoji: String}type AiCodeExplanation {  summary: String!  lineByLine: [AiCodeLineExplanation!]!  complexity: AiCodeComplexity!  suggestions: [String!]!}type AiCodeLineExplanation {  lines: String!  explanation: String!}type AiCodeComplexity {  time: String!  space: String!}type AiCommitMessage {  message: String!}type AiImageGeneration {  imageUrl: String!}type AiUnitTest {  tests: String!}type AiThemeConfiguration {  mode: String!  palette: JSON!  theme: JSON!  accessibility: JSON!}input AiThemeGenerationInput {  description: String  imageUrl: String}input AiThemeUpdateInput {  colors: JSON!  mode: String!}type FeatureFlag {  id: ID!  name: String!  enabled: Boolean!  description: String}type ThemeConfiguration {  id: ID!  name: String!  colors: JSON!  mode: String!}input ThemeInput {  name: String!  colors: JSON!  mode: String!}type Query {  me: User  githubRepos(owner: String, limit: Int): [GitHubRepo!]!  githubFileContent(owner: String!, repo: String!, path: String!): GitHubFile  aiCodeExplain(code: String!): AiCodeExplanation  aiGenerateImage(prompt: String!): AiImageGeneration  listFeatureFlags: [FeatureFlag!]!  getThemeConfiguration: ThemeConfiguration}type Mutation {  login(input: LoginInput!): AuthPayload  logout: Boolean  refreshToken: String  githubCommitFile(input: GitHubCommitFileInput!): String  jiraCreateIssue(input: JiraCreateIssueInput!): JiraIssue  slackPostMessage(input: SlackPostMessageInput!): SlackMessageResponse  aiGenerateCommitMessage(diff: String!): AiCommitMessage  aiGenerateUnitTests(code: String!): AiUnitTest  aiGenerateTheme(input: AiThemeGenerationInput!): AiThemeConfiguration  updateThemeConfiguration(input: ThemeInput!): ThemeConfiguration}
+"""
+A custom scalar type for representing arbitrary JSON objects.
+"""
+scalar JSON
+
+"""
+A custom scalar type for representing a date-time string in ISO 8601 format.
+"""
+scalar DateTime
+
+# ===============================================
+# USER & AUTHENTICATION TYPES
+# ===============================================
+
+"""
+Represents an authenticated user's profile information, typically decoded from a JWT.
+"""
+type User {
+  """Unique identifier for the user (e.g., from an OIDC provider)."""
+  id: ID!
+  """User's primary email address."""
+  email: String!
+  """User's full display name."""
+  displayName: String
+  """URL to the user's profile picture."""
+  photoURL: String
+  """User's assigned roles for authorization within the application."""
+  roles: [String!]
+}
+
+"""
+The payload returned upon successful authentication.
+"""
+type AuthPayload {
+  """A short-lived JSON Web Token (JWT) for authenticating subsequent requests to the BFF."""
+  token: String!
+  """The authenticated user's profile information."""
+  user: User!
+}
+
+"""
+Input for the user login mutation.
+"""
+input LoginInput {
+  email: String!
+  password: String!
+}
+
+# ===============================================
+# GITHUB PROXY TYPES
+# ===============================================
+
+"""
+Represents a GitHub repository, with data proxied through the BFF.
+"""
+type GitHubRepo {
+  id: ID!
+  name: String!
+  fullName: String!
+  private: Boolean!
+  htmlUrl: String!
+  description: String
+  owner: String!
+}
+
+"""
+Represents the content of a file from a GitHub repository.
+"""
+type GitHubFile {
+  path: String!
+  content: String!
+  sha: String!
+}
+
+"""
+Input for committing a file to a GitHub repository.
+"""
+input GitHubCommitFileInput {
+  owner: String!
+  repo: String!
+  path: String!
+  content: String!
+  message: String!
+  branch: String
+}
+
+"""
+Groups all GitHub-related queries.
+"""
+type GitHubQueries {
+  """Fetches a list of repositories for the authenticated user."""
+  repos(owner: String, limit: Int): [GitHubRepo!]!
+  """Fetches the content of a specific file from a repository."""
+  fileContent(owner: String!, repo: String!, path: String!): GitHubFile
+}
+
+"""
+Groups all GitHub-related mutations.
+"""
+type GitHubMutations {
+  """Commits a file change to a repository."""
+  commitFile(input: GitHubCommitFileInput!): String! # Returns commit URL
+}
+
+# ===============================================
+# AI GATEWAY TYPES
+# ===============================================
+
+"""
+Represents a structured explanation of a code snippet.
+"""
+type AiCodeExplanation {
+  summary: String!
+  lineByLine: [AiCodeLineExplanation!]!
+  complexity: AiCodeComplexity!
+  suggestions: [String!]!
+}
+
+"""
+Represents an explanation for a specific line or block of code.
+"""
+type AiCodeLineExplanation {
+  lines: String!
+  explanation: String!
+}
+
+"""
+Represents the computational complexity of a piece of code.
+"""
+type AiCodeComplexity {
+  time: String!
+  space: String!
+}
+
+"""
+Represents a file generated by an AI service.
+"""
+type GeneratedFile {
+  filePath: String!
+  content: String!
+  description: String!
+}
+
+"""
+Defines the goal for an AI-powered code refactoring operation.
+"""
+enum RefactorGoal {
+  READABILITY
+  PERFORMANCE
+  ADD_JSDOC
+  TO_FUNCTIONAL_COMPONENT
+}
+
+"""
+Input for the refactorCode mutation.
+"""
+input RefactorCodeInput {
+  code: String!
+  goal: RefactorGoal!
+}
+
+"""
+Input for the generateFullStackFeature mutation.
+"""
+input FullStackFeatureInput {
+  prompt: String!
+  framework: String!
+  styling: String!
+}
+
+"""
+Groups all AI-related mutations, proxied to the AI Gateway microservice.
+"""
+type AiMutations {
+  """[STREAMING] Generates a textual response from a prompt."""
+  generateContent(prompt: String!, systemInstruction: String): String!
+
+  """Generates a structured explanation of a code snippet."""
+  explainCode(code: String!): AiCodeExplanation!
+
+  """[STREAMING] Generates a conventional commit message from a git diff."""
+  generateCommitMessage(diff: String!): String!
+
+  """[STREAMING] Generates unit tests for a given code snippet."""
+  generateUnitTests(code: String!): String!
+
+  """Generates multiple files for a full-stack feature from a prompt."""
+  generateFullStackFeature(input: FullStackFeatureInput!): [GeneratedFile!]!
+
+  """Generates an image from a text prompt and returns its URL."""
+  generateImage(prompt: String!): String!
+
+  """[STREAMING] Refactors code based on a specified goal."""
+  refactorCode(input: RefactorCodeInput!): String!
+
+  """[STREAMING] Converts a UI screenshot (as a Base64 string) into a React/Tailwind component."""
+  generateComponentFromImage(imageBase64: String!): String!
+}
+
+# ===============================================
+# WORKSPACE ACTION TYPES
+# ===============================================
+
+"""
+Represents the result of executing a workspace action. The data payload is a generic JSON object,
+allowing for flexible return structures from various services like Jira, Slack, etc.
+"""
+type WorkspaceActionResult {
+  """Indicates if the action was successful."""
+  success: Boolean!
+  """A message describing the result of the action."""
+  message: String
+  """The data payload returned by the action, if any."""
+  data: JSON
+}
+
+# ===============================================
+# ROOT QUERY & MUTATION
+# ===============================================
+
+"""
+Defines the entry points for all read operations in the GraphQL API.
+"""
+type Query {
+  """Retrieves the profile of the currently authenticated user."""
+  me: User
+
+  """Namespace for all GitHub-related queries."""
+  github: GitHubQueries!
+}
+
+"""
+Defines the entry points for all write/modification operations in the GraphQL API.
+"""
+type Mutation {
+  """Authenticates a user and returns a session token and user profile."""
+  login(input: LoginInput!): AuthPayload!
+
+  """Logs out the current user and invalidates their session."""
+  logout: Boolean!
+
+  """Refreshes an expired access token using a refresh token."""
+  refreshToken: String!
+
+  """Namespace for all GitHub-related mutations."""
+  github: GitHubMutations!
+
+  """Namespace for all AI-related mutations."""
+  ai: AiMutations!
+
+  """Executes a registered workspace action (e.g., 'jira_create_ticket', 'slack_post_message')."""
+  executeWorkspaceAction(actionId: String!, params: JSON!): WorkspaceActionResult!
+}
