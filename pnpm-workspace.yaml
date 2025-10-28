@@ -1,12 +1,7 @@
 packages:
-  # Host applications (e.g., the main shell, the BFF)
-  - 'apps/*'
+  # All packages in the monorepo, including shared libraries, MFEs, and the shell.
+  # The double-star glob ('**') ensures that nested packages like those in 'packages/mfes/*' are discovered.
+  - 'packages/**'
 
-  # Independently deployable micro-frontend applications
-  - 'micro-frontends/*'
-
-  # Shared libraries, UI components, and core utilities
-  - 'packages/*'
-
-  # Backend-for-Frontend (BFF) and microservices
+  # All backend microservices.
   - 'services/*'
