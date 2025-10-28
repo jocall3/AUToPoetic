@@ -1,6 +1,6 @@
 {
   "name": "@devcore/orchestration",
-  "version": "1.0.0",
+  "version": "",
   "description": "Resource Orchestrator and Worker Pool Manager for the DevCore AI Toolkit, handling predictive resource fetching and offloading computations to a web worker pool.",
   "main": "./dist/index.js",
   "module": "./dist/index.mjs",
