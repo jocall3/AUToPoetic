@@ -18,33 +18,43 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      # 1️⃣ Checkout repo using PAT
+      # 1️⃣ Set Gemini API key first
+      - name: Set Gemini API key
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          echo "Gemini API key is set"
+          echo "GEMINI_API_KEY=${GEMINI_API_KEY}" >> $GITHUB_ENV
+
+      # 2️⃣ Checkout repo using PAT for private workspace packages
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           token: ${{ secrets.GH_PAT }}
           submodules: false
 
-      # 2️⃣ Setup PNPM
+      # 3️⃣ Setup PNPM
       - name: Setup PNPM
         uses: pnpm/action-setup@v3
         with:
           version: 10
 
-      # 3️⃣ Install dependencies from local workspace
+      # 4️⃣ Install dependencies using lockfile
       - name: Install dependencies
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GH_PAT }}
         run: pnpm install --no-frozen-lockfile
 
-      # 4️⃣ Call Gemini API
+      # 5️⃣ Type-check (optional)
+      - name: Type check
+        run: pnpm typecheck
+
+      # 6️⃣ Call Gemini API
       - name: Call Gemini API
-        env:
-          GEMINI_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: |
           echo "Calling Gemini API..."
           STATUS=$(curl -s -o response.json -w "%{http_code}" \
-            -H "x-goog-api-key: $GEMINI_KEY" \
+            -H "x-goog-api-key: $GEMINI_API_KEY" \
             -H "Content-Type: application/json" \
             -X POST \
             -d '{
@@ -67,11 +77,11 @@ jobs:
           echo "Gemini API call succeeded"
           cat response.json
 
-      # 5️⃣ Build the static app
+      # 7️⃣ Build static app
       - name: Build static app
         run: pnpm build
 
-      # 6️⃣ Upload artifact for deployment
+      # 8️⃣ Upload artifact for deployment
       - name: Upload build artifact
         uses: actions/upload-pages-artifact@v3
         with:
@@ -84,7 +94,7 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      # Deploy to GitHub Pages
+      # Deploy the artifact to GitHub Pages
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
