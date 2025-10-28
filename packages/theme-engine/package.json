@@ -12,12 +12,13 @@
       "require": "./dist/index.js"
     }
   },
-  "scripts": {
-    "build": "vite build",
-    "dev": "vite build --watch",
-    "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
-    "test": "vitest run"
-  },
+ "scripts": {
+  "build": "tsc --declaration --outDir dist && vite build --config vite.lib.config.ts",
+  "dev": "vite build --watch --config vite.lib.config.ts",
+  "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
+  "test": "vitest run",
+  "clean": "rm -rf dist"
+},
   "peerDependencies": {
     "react": "18.2.0"
   },
