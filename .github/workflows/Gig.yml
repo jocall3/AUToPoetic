@@ -1,0 +1,32 @@
+name: fix-submodule-once
+on:
+  push:
+    branches: [ autocommit-all ]
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo with PAT
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GH_PAT }}
+          fetch-depth: 0
+
+      - name: Remove submodule traces for workspace-providers
+        run: |
+          git rm -f packages/workspace-providers || true
+          rm -rf .git/modules/packages/workspace-providers || true
+          git config -f .gitmodules --remove-section submodule.packages/workspace-providers || true
+          git add .gitmodules || true
+
+      - name: Commit removal
+        run: |
+          git commit -am "fix: remove broken submodule workspace-providers" || true
+          git push origin autocommit-all
+
+      - name: Delete self after run
+        run: |
+          git rm .github/workflows/fix-submodule-once.yml
+          git commit -m "chore: delete one-shot workflow"
+          git push origin autocommit-all
