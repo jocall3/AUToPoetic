@@ -3,8 +3,8 @@
  * @description This module provides a feature component that converts Markdown text into a presentable slideshow format.
  * It adheres to the new architectural directives by offloading Markdown parsing to a web worker
  * and utilizing the new Core UI component library.
- * @see @core/ui/Container
- * @see @core/ui/TextArea
+ * @see @/ui/core/Container
+ * @see @/ui/core/TextArea
  * @see @/services/WorkerPoolManager
  */
 
@@ -34,7 +34,7 @@ This is a slide deck generated from Markdown.
 
 Navigate using the buttons below or your arrow keys in fullscreen mode.
 
-\
+\ 
 
 ### Code blocks work too!
 
@@ -219,4 +219,5 @@ export const MarkdownSlides: React.FC = () => {
             </Grid>
         </Panel>
     );
+};
 };
