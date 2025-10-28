@@ -12,17 +12,15 @@
  * It supports `asChild` prop for component composition, allowing its styles and properties
  * to be passed to a child element, enhancing its flexibility.
  *
- * Comprehensive JSDoc is provided for all props and functionalities to facilitate ease of use and maintainability.
- *
  * @see The architectural directive for a 'Pluggable, Themeable, and Abstracted UI Framework'.
- * @see {@link https://cva.style/docs|CVA documentation}
+ * @see {@link https://cva.style/docs | CVA documentation}
  */
 
 import * as React from 'react';
 import { Slot } from '@radix-ui/react-slot';
 import { cva, type VariantProps } from 'class-variance-authority';
 
-import { cn } from '../../lib/utils'; // Assumes a utility function for merging Tailwind classes
+import { cn } from '../lib/utils'; // Assumes a utility function for merging Tailwind classes
 
 /**
  * Defines the visual variants for the Button component using `class-variance-authority`.
@@ -67,18 +65,24 @@ const buttonVariants = cva(
  * @interface ButtonProps
  * @description Props interface for the Button component.
  * Extends standard HTML button attributes and adds custom variants via `VariantProps`.
- *
- * @param {('default'|'destructive'|'outline'|'secondary'|'ghost'|'link'|null|undefined)} [variant] - The visual style of the button.
- * @param {('default'|'sm'|'lg'|'icon'|null|undefined)} [size] - The size of the button.
- * @param {boolean} [asChild=false] - If true, the button will not render its own DOM element, but will instead merge its props and behavior onto its immediate child component. This is useful for component composition.
- * @param {React.ReactNode} [leftIcon] - An optional icon to be displayed to the left of the button's children.
- * @param {React.ReactNode} [rightIcon] - An optional icon to be displayed to the right of the button's children.
  */
 export interface ButtonProps
   extends React.ButtonHTMLAttributes<HTMLButtonElement>,
     VariantProps<typeof buttonVariants> {
+  /**
+   * If true, the button will not render its own DOM element, but will instead
+   * merge its props and behavior onto its immediate child component.
+   * This is useful for component composition, for example, wrapping an `<a>` tag.
+   * @default false
+   */
   asChild?: boolean;
+  /**
+   * An optional icon component to be displayed to the left of the button's children.
+   */
   leftIcon?: React.ReactNode;
+  /**
+   * An optional icon component to be displayed to the right of the button's children.
+   */
   rightIcon?: React.ReactNode;
 }
 
@@ -86,8 +90,8 @@ export interface ButtonProps
  * A foundational, themeable, and accessible button component.
  *
  * @component
- * @param {ButtonProps} props - The props for the Button component.
- * @param {React.Ref<HTMLButtonElement>} ref - Forwarded ref to the underlying button element.
+ * @param {ButtonProps} props The props for the Button component.
+ * @param {React.Ref<HTMLButtonElement>} ref Forwarded ref to the underlying button element.
  * @returns {React.ReactElement} The rendered button element.
  *
  * @example
