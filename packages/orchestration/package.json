@@ -22,12 +22,11 @@
     "dist"
   ],
   "scripts": {
-    "build": "tsup src/index.ts --format cjs,esm --dts",
-    "dev": "tsup src/index.ts --format cjs,esm --dts --watch",
-    "lint": "eslint . --ext .ts --report-unused-disable-directives --max-warnings 0",
-    "clean": "rm -rf dist .turbo",
-    "typecheck": "tsc --noEmit",
-    "docs": "typedoc"
+  "build": "tsc --declaration --outDir dist && vite build --config vite.lib.config.ts",
+  "dev": "vite build --watch --config vite.lib.config.ts",
+  "lint": "tsc --noEmit",
+  "docs": "typedoc",
+  "clean": "rm -rf dist"
   },
   "dependencies": {
     "@devcore/worker-pool": "workspace:*",
@@ -45,5 +44,5 @@
     "typedoc": "^0.25.13",
     "typescript": "5.4.5"
   },
-  "license": "UNLICENSED"
+  "license": "MIT"
 }

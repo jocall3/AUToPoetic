@@ -18,17 +18,13 @@
       }
     }
   },
-  "files": [
-    "dist"
-  ],
-  "scripts": {
-    "build": "tsup src/index.ts --format cjs,esm --dts",
-    "dev": "tsup src/index.ts --format cjs,esm --dts --watch",
-    "lint": "eslint . --ext .ts,.tsx --report-unused-disable-directives --max-warnings 0",
-    "test": "vitest run",
-    "clean": "rm -rf dist .turbo",
-    "docs": "typedoc"
-  },
+ "scripts": {
+  "build": "tsc --declaration --outDir dist && vite build --config vite.lib.config.ts",
+  "dev": "vite build --watch --config vite.lib.config.ts",
+  "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
+  "test": "vitest run",
+  "clean": "rm -rf dist"
+},
   "peerDependencies": {
     "react": "^18.2.0"
   },
@@ -46,16 +42,8 @@
   },
   "author": "Elite AI Implementation Team <contact@devcore.ai>",
   "license": "UNLICENSED",
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/jocall3/autopoetic.git",
-    "directory": "packages/theme-engine"
-  },
-  "keywords": [
-    "theme",
-    "engine",
-    "ui",
-    "css-in-js",
-    "devcore"
-  ]
+  "dependencies": {
+    "react": "18.2.0",
+    "react-dom": "18.2.0"
+  }
 }

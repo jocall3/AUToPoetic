@@ -22,7 +22,13 @@
     "inversify-express-utils": "^6.4.6",
     "octokit": "^3.2.1",
     "reflect-metadata": "^0.2.2",
-    "winston": "^3.13.0"
+    "dotenv": "^16.4.5",
+    "winston": "^3.13.0",
+    "@octokit/rest": "^21.0.0",
+    "@octokit/types": "^14.1.0",
+    "@devcore/auth-client": "workspace:*",
+    "react": "18.2.0",
+    "react-dom": "18.2.0"
   },
   "devDependencies": {
     "@types/cors": "^2.8.17",
@@ -31,21 +37,8 @@
     "@typescript-eslint/eslint-plugin": "^7.14.1",
     "@typescript-eslint/parser": "^7.14.1",
     "eslint": "^8.57.0",
-    "tsx": "^4.16.0",
-    "typedoc": "^0.25.13",
-    "typescript": "^5.5.2",
-    "vitest": "^1.6.0"
-  },
-  "engines": {
-    "node": ">=20.0.0"
-  },
-  "keywords": [
-    "github",
-    "proxy",
-    "microservice",
-    "bff",
-    "devcore"
-  ],
-  "author": "Elite AI Implementation Team",
-  "license": "UNLICENSED"
+    "@typescript-eslint/parser": "^7.13.0",
+    "@typescript-eslint/eslint-plugin": "^7.13.0",
+    "typedoc": "^0.26.2"
+  }
 }
