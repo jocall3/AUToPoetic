@@ -269,7 +269,7 @@ const MessageLog: React.FC<{ messages: WorkerMessage[] }> = ({ messages }) => (
         {messages.map(msg => (
             <div key={msg.messageId} className={`p-1 rounded ${msg.direction === 'main-to-worker' ? 'bg-sky-900/50' : 'bg-indigo-900/50'}`}>
                 <span>[{new Date(msg.timestamp).toLocaleTimeString()}]</span>
-                <span className={msg.direction === 'main-to-worker' ? 'text-sky-400' : 'text-indigo-400'}> {msg.direction === 'main-to-worker' ? `MAIN â†’ W${msg.workerId}` : `W${msg.workerId} â†’ MAIN`} </span>
+                <span className={msg.direction === 'main-to-worker' ? 'text-sky-400' : 'text-indigo-400'}> {msg.direction === 'main-to-worker' ? `MAIN → W${msg.workerId}` : `W${msg.workerId} → MAIN`} </span>
                 <span>({msg.type}) - Task {msg.taskId.split('-')[1]}</span>
             </div>
         ))}
