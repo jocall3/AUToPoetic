@@ -1,28 +1,28 @@
 {
   "$schema": "https://typedoc.org/schema.json",
   "entryPoints": [
-    "./App.tsx",
-    "./components",
-    "./contexts",
-    "./hooks",
-    "./services",
-    "./types.ts",
-    "./utils",
-    "./constants.tsx"
+    "./packages",
+    "./services"
   ],
-  "entryPointStrategy": "expand",
+  "entryPointStrategy": "packages",
   "out": "documentation-portal",
   "name": "DevCore AI Toolkit - Technical Documentation",
   "readme": "README.md",
   "tsconfig": "tsconfig.json",
   "exclude": [
     "**/node_modules/**",
-    "dist/**",
+    "**/dist/**",
     ".github/**",
     "public/**",
     "articles/**",
     "docs/**",
-    "**/*.d.ts"
+    "documentation-portal/**",
+    "**/*.d.ts",
+    "**/vite.config.ts",
+    "**/vite.lib.config.ts",
+    "**/webpack.config.js",
+    "**/tailwind.config.js",
+    "**/postcss.config.js"
   ],
   "theme": "default",
   "categorizeByGroup": true,
@@ -45,13 +45,14 @@
   "searchInDocuments": true,
   "visibilityFilters": {
     "protected": false,
-    "private": false,
+    "private": true,
     "inherited": true,
-    "external": false,
-    "@internal": false
+    "external": false
   },
+  "excludePrivate": true,
+  "excludeExternals": true,
   "navigationLinks": {
-    "GitHub Repository": "https://github.com/your-org/your-repo"
+    "GitHub Repository": "https://github.com/jocall3/autopoetic"
   },
   "sidebarLinks": {
     "Project README": "README.md"

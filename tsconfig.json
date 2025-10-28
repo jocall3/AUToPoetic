@@ -1,91 +1,22 @@
 {
-  "compilerOptions": {
-    "target": "ESNext",
-    "module": "ESNext",
-    "lib": [
-      "ESNext",
-      "DOM",
-      "DOM.Iterable",
-      "WebWorker"
-    ],
-    "jsx": "react-jsx",
-    "moduleResolution": "bundler",
-    "allowImportingTsExtensions": true,
-    "resolveJsonModule": true,
-    "isolatedModules": true,
-    "baseUrl": ".",
-    "paths": {
-      "@/components/*": [
-        "components/*"
-      ],
-      "@/contexts/*": [
-        "contexts/*"
-      ],
-      "@/hooks/*": [
-        "hooks/*"
-      ],
-      "@/services/core/*": [
-        "services/core/*"
-      ],
-      "@/services/business/*": [
-        "services/business/*"
-      ],
-      "@/services/infrastructure/*": [
-        "services/infrastructure/*"
-      ],
-      "@/lib/core-ui/*": [
-        "lib/core-ui/*"
-      ],
-      "@/lib/composite-ui/*": [
-        "lib/composite-ui/*"
-      ],
-      "@/lib/theme/*": [
-        "lib/theme/*"
-      ],
-      "@/utils/*": [
-        "utils/*"
-      ],
-      "@/types/*": [
-        "types/*"
-      ],
-      "@/workers/*": [
-        "workers/*"
-      ],
-      "@/public/*": [
-        "public/*"
-      ]
-    },
-    "strict": true,
-    "noUnusedLocals": true,
-    "noUnusedParameters": true,
-    "noFallthroughCasesInSwitch": true,
-    "forceConsistentCasingInFileNames": true,
-    "esModuleInterop": true,
-    "allowJs": true,
-    "checkJs": true,
-    "skipLibCheck": true,
-    "experimentalDecorators": true,
-    "emitDecoratorMetadata": true,
-    "noEmit": true,
-    "useDefineForClassFields": false
-  },
-  "include": [
-    "**/*.ts",
-    "**/*.tsx",
-    "**/*.js",
-    "**/*.jsx",
-    "vite.config.ts",
-    "tailwind.config.js",
-    "postcss.config.js"
-  ],
-  "exclude": [
-    "node_modules",
-    "dist",
-    "web"
-  ],
+  "files": [],
   "references": [
-    {
-      "path": "./tsconfig.server.json"
-    }
+    { "path": "./packages/auth-client" },
+    { "path": "./packages/orchestration" },
+    { "path": "./packages/shell" },
+    { "path": "./packages/theme-engine" },
+    { "path": "./packages/ui-composite" },
+    { "path": "./packages/ui-core" },
+    { "path": "./packages/worker-pool" },
+    { "path": "./packages/workspace-manager" },
+    { "path": "./packages/mfes/ai-code-explainer" },
+    { "path": "./packages/mfes/project-explorer" },
+    { "path": "./packages/mfes/theme-designer" },
+    { "path": "./services/ai-gateway" },
+    { "path": "./services/auth-gateway" },
+    { "path": "./services/bff" },
+    { "path": "./services/github-proxy" },
+    { "path": "./services/user-session" },
+    { "path": "./services/vault-proxy" }
   ]
 }
