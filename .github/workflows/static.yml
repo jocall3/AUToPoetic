@@ -2,7 +2,7 @@ name: Build and Deploy Static Site
 
 on:
   push:
-    branches: ["main"]  # or your default branch
+    branches: ["autocommit-all"]  # <- correct branch
   workflow_dispatch:
 
 permissions:
@@ -57,13 +57,11 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: ./dist  # <-- adjust if your build output is somewhere else
+          path: ./dist  # adjust if your build output is somewhere else
 
       # 8. Deploy to GitHub Pages
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
         with:
-          # The URL will automatically point to your GitHub Pages site
-          # Adjust if needed
           artifact-path: ./dist
