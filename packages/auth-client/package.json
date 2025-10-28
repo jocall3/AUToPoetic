@@ -26,7 +26,7 @@
     "lint": "eslint . --ext .ts",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "build": "vite build",
+    "build": "tsc --declaration --outDir dist && vite build --config vite.lib.config.ts",
     "docs": "typedoc --out docs src/index.ts",
     "prepublishOnly": "npm run test && npm run build"
   },
