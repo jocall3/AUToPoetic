@@ -9,10 +9,11 @@
     "dist"
   ],
   "scripts": {
-    "build": "vite build",
-    "dev": "vite",
-    "lint": "tsc --noEmit",
-    "docs": "typedoc"
+  "build": "tsc --declaration --outDir dist && vite build --config vite.lib.config.ts",
+  "dev": "vite build --watch --config vite.lib.config.ts",
+  "lint": "tsc --noEmit",
+  "docs": "typedoc",
+  "clean": "rm -rf dist"
   },
   "dependencies": {
     "comlink": "^4.4.1",
