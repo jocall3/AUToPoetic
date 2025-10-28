@@ -97,9 +97,9 @@ const PromptList: React.FC<PromptListProps> = memo(({ prompts, activePromptId, o
                             <Input
                                 autoFocus
                                 value={tempName}
-                                onChange={e => setTempName(e.target.value)}
+                                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setTempName(e.target.value)}
                                 onBlur={() => handleNameUpdate(p.id)}
-                                onKeyDown={e => e.key === 'Enter' && handleNameUpdate(p.id)}
+                                onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => e.key === 'Enter' && handleNameUpdate(p.id)}
                             />
                         ) : (
                             <Text className={`text-sm ${activePromptId === p.id ? 'text-primary font-semibold' : 'text-text-primary'}`}>{p.name}</Text>
@@ -118,6 +118,7 @@ const PromptList: React.FC<PromptListProps> = memo(({ prompts, activePromptId, o
         </Card>
     );
 });
+PromptList.displayName = 'PromptList';
 
 /**
  * @interface PromptEditorProps
@@ -142,6 +143,11 @@ const PromptEditor: React.FC<PromptEditorProps> = memo(({ activePrompt, onUpdate
         return [...new Set([...activePrompt.text.matchAll(/\{(\w+)\}/g)].map(match => match[1]))];
     }, [activePrompt]);
 
+    useEffect(() => {
+        // Reset variables when active prompt changes
+        setVariables({});
+    }, [activePrompt.id]);
+
     const renderedPrompt = useMemo(() => {
         if (!activePrompt) return '';
         return variableNames.reduce((acc, varName) => {
@@ -156,7 +162,7 @@ const PromptEditor: React.FC<PromptEditorProps> = memo(({ activePrompt, onUpdate
 
     return (
         <Flex className="w-2/3 flex-col gap-4">
-            <TextArea value={activePrompt.text} onChange={e => onUpdateText(e.target.value)} className="flex-grow" />
+            <TextArea value={activePrompt.text} onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => onUpdateText(e.target.value)} className="flex-grow" />
             {(variableNames.length > 0 || renderedPrompt) && (
                 <Card className="flex-shrink-0">
                     {variableNames.length > 0 && (
@@ -166,7 +172,7 @@ const PromptEditor: React.FC<PromptEditorProps> = memo(({ activePrompt, onUpdate
                                 {variableNames.map(v => (
                                     <div key={v}>
                                         <label className="text-xs text-text-secondary">{v}</label>
-                                        <Input type="text" value={variables[v] || ''} onChange={e => setVariables({ ...variables, [v]: e.target.value })} />
+                                        <Input type="text" value={variables[v] || ''} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setVariables({ ...variables, [v]: e.target.value })} />
                                     </div>
                                 ))}
                             </Grid>
@@ -184,6 +190,7 @@ const PromptEditor: React.FC<PromptEditorProps> = memo(({ activePrompt, onUpdate
         </Flex>
     );
 });
+PromptEditor.displayName = 'PromptEditor';
 
 /**
  * @class PromptCraftPad
