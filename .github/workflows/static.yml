@@ -33,13 +33,7 @@ jobs:
           echo "//npm.pkg.github.com/:_authToken=${{ secrets.GH_PAT }}" > ~/.npmrc
           echo "GitHub PAT configured"
 
-      # 4. Setup Node + pnpm
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: "pnpm"
-
+      # 4. Setup  pnpm
       - name: Setup pnpm
         uses: pnpm/action-setup@v3
         with:
