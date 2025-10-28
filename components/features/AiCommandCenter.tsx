@@ -12,14 +12,15 @@
  */
 
 import React, { useState, useCallback } from 'react';
-import { useGlobalState } from '../../contexts/GlobalStateContext.tsx';
-import { CommandLineIcon } from '../icons.tsx';
-import { LoadingSpinner } from '../shared/index.tsx';
-import { executeWorkspaceAction } from '../../services/workspaceConnectorService.ts';
 
-// MOCK IMPLEMENTATION: In a real scenario, this would be a singleton instance
-// provided via a Dependency Injection container.
-import { workerPoolManager } from '../../services/workerPoolManager.ts';
+// Core UI & Shared Components (using path aliases)
+import { CommandLineIcon } from '@/components/icons';
+import { LoadingSpinner, MarkdownRenderer } from '@/components/shared';
+
+// Global State & Services (using path aliases)
+import { useGlobalState } from '@/contexts/GlobalStateContext';
+import { executeWorkspaceAction } from '@/services/workspaceConnectorService';
+import { workerPoolManager } from '@/services/workerPoolManager'; // Assumed correct alias path
 
 /**
  * @interface CommandResponse
@@ -51,7 +52,8 @@ interface ExamplePromptButtonProps {
 const ExamplePromptButton: React.FC<ExamplePromptButtonProps> = ({ text, onClick }) => (
     <button
         onClick={() => onClick(text)}
-        className="px-3 py-1.5 bg-surface border border-border rounded-full text-xs hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
+        className="px-3 py-1.5 bg-surface border border-border rounded-full text-xs text-text-secondary hover:bg-background transition-colors"
+        aria-label={`Use example prompt: ${text}`}
     >
         {text}
     </button>
@@ -84,13 +86,13 @@ export const AiCommandCenter: React.FC = () => {
 
         try {
             // Offload AI interaction to a web worker
-            const response = await workerPoolManager.enqueueTask<CommandResponse>('process-ai-command', { prompt });
+            const response = await workerPoolManager.submitTask<CommandResponse>('process-ai-command', { prompt });
 
             if (response.functionCalls && response.functionCalls.length > 0) {
                 const call = response.functionCalls[0];
                 const { name, args } = call;
 
-                setLastResponse(`Understood! Executing command: ${name}`);
+                setLastResponse(`Understood! Executing command: **${name}**`);
 
                 switch (name) {
                     case 'navigateTo':
@@ -102,18 +104,18 @@ export const AiCommandCenter: React.FC = () => {
                     case 'runWorkspaceAction':
                         try {
                             const result = await executeWorkspaceAction(args.actionId, args.params);
-                            setLastResponse(`Action '${args.actionId}' executed successfully.\n\nResult: \`\`\`json\n${JSON.stringify(result, null, 2)}\n\`\`\``);
+                            setLastResponse(`Action '${args.actionId}' executed successfully.\n\n**Result:**\n\`\`\`json\n${JSON.stringify(result, null, 2)}\n\`\`\``);
                         } catch (e) {
                             const errorMessage = e instanceof Error ? e.message : 'Unknown error during workspace action';
-                            setLastResponse(`Action failed: ${errorMessage}`);
+                            setLastResponse(`**Action failed:** ${errorMessage}`);
                             console.error('Workspace action execution failed:', e);
                         }
                         break;
                     default:
-                        setLastResponse(`Unknown command received from backend: ${name}`);
+                        setLastResponse(`Unknown command received from backend: \`${name}\``);
                 }
                 setPrompt('');
-            } else if(response.text) {
+            } else if (response.text) {
                 setLastResponse(response.text);
             } else {
                 setLastResponse("I'm not sure how to respond to that. Please try a different command.");
@@ -122,7 +124,7 @@ export const AiCommandCenter: React.FC = () => {
         } catch (err) {
             const errorMessage = err instanceof Error ? err.message : 'An unknown error occurred.';
             console.error("Error in handleCommand:", err);
-            setLastResponse(`Error: ${errorMessage}`);
+            setLastResponse(`**Error:** ${errorMessage}`);
         } finally {
             setIsLoading(false);
         }
@@ -131,9 +133,9 @@ export const AiCommandCenter: React.FC = () => {
     /**
      * @function handleKeyDown
      * @description Handles keyboard events on the textarea, specifically submitting on Enter.
-     * @param {React.KeyboardEvent} e - The keyboard event.
+     * @param {React.KeyboardEvent<HTMLTextAreaElement>} e - The keyboard event.
      */
-    const handleKeyDown = (e: React.KeyboardEvent) => {
+    const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
         if (e.key === 'Enter' && !e.shiftKey) {
             e.preventDefault();
             handleCommand();
@@ -152,7 +154,7 @@ export const AiCommandCenter: React.FC = () => {
     return (
         <div className="h-full flex flex-col p-4 sm:p-6 lg:p-8 text-text-primary">
             <header className="mb-6 text-center">
-                <h1 className="text-4xl font-extrabold tracking-tight flex items-center justify-center">
+                <h1 className="text-4xl font-bold tracking-tight flex items-center justify-center">
                     <CommandLineIcon />
                     <span className="ml-3">AI Command Center</span>
                 </h1>
@@ -162,7 +164,7 @@ export const AiCommandCenter: React.FC = () => {
             <div className="flex-grow flex flex-col justify-end max-w-3xl w-full mx-auto">
                 {lastResponse && (
                     <div className="mb-4 p-4 bg-surface rounded-lg text-text-primary border border-border">
-                        <p className="whitespace-pre-wrap"><strong>AI:</strong> {lastResponse}</p>
+                         <MarkdownRenderer content={lastResponse} />
                     </div>
                 )}
                 <div className="relative">

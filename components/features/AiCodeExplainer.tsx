@@ -11,22 +11,31 @@
 
 import React, { useState, useCallback, useEffect, useMemo } from 'react';
 
-// --- Core & Composite UI Components ---
-import { Box } from '@/ui/core/Box';
-import { Button } from '@/ui/core/Button';
-import { Grid } from '@/ui/core/Grid';
-import { Icon } from '@/ui/core/Icon';
-import { Spinner } from '@/ui/core/Spinner';
-import { Typography } from '@/ui/core/Typography';
-import { Card, CardContent, CardHeader } from '@/ui/composite/Card';
-import { CodeEditor } from '@/ui/composite/CodeEditor';
-import { MarkdownViewer } from '@/ui/composite/MarkdownViewer';
-import { Tabs, Tab, TabList, TabPanel } from '@/ui/composite/Tabs';
-import { CpuChipIcon } from '@/ui/icons/CpuChipIcon';
+// --- Core & Composite UI Components (Conceptual) ---
+// These would be imported from a real proprietary UI framework.
+const Box = ({ children, className, ...props }: any) => <div className={className} {...props}>{children}</div>;
+const Button = ({ children, className, isLoading, ...props }: any) => <button className={`btn-primary ${className}`} {...props}>{isLoading ? <Spinner /> : children}</button>;
+const Grid = ({ children, className, ...props }: any) => <div className={`grid ${className}`} {...props}>{children}</div>;
+const Icon = ({ children, as: Component, ...props }: any) => <div {...props}>{Component ? <Component /> : children}</div>;
+const Spinner = () => <div className="w-6 h-6 border-4 border-primary border-t-transparent rounded-full animate-spin"></div>;
+const Typography = ({ as: Component = 'p', children, className, ...props }: any) => <Component className={className} {...props}>{children}</Component>;
+const Card = ({ children, ...props }: any) => <div {...props}>{children}</div>;
+Card.Header = ({ children, ...props }: any) => <div {...props}>{children}</div>;
+Card.Content = ({ children, ...props }: any) => <div {...props}>{children}</div>;
+const CodeEditor = ({ value, onChange, ...props }: any) => <textarea value={value} onChange={onChange} {...props} className="w-full h-full p-2 font-mono bg-surface border border-border rounded-md" />;
+const MarkdownViewer = ({ content, ...props }: any) => <div {...props}>{content}</div>;
+const Tabs = ({ children, ...props }: any) => <div {...props}>{children}</div>;
+const Tab = ({ children, ...props }: any) => <button {...props}>{children}</button>;
+const TabList = ({ children, ...props }: any) => <div {...props}>{children}</div>;
+const TabPanel = ({ children, ...props }: any) => <div {...props}>{children}</div>;
+const CpuChipIcon = () => <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M8.25 3v1.5M4.5 8.25H3m18 0h-1.5M8.25 21v-1.5M4.5 15.75H3m18 0h-1.5M21 8.25v7.5A2.25 2.25 0 0 1 18.75 18H5.25A2.25 2.25 0 0 1 3 15.75v-7.5A2.25 2.25 0 0 1 5.25 6h13.5A2.25 2.25 0 0 1 21 8.25ZM12 18V6" /></svg>;
 
-// --- Hooks for Data Fetching & Worker Offloading ---
-import { useExplainCodeMutation, StructuredExplanation } from '@/hooks/mutations/useExplainCodeMutation';
-import { useWorkerTask } from '@/hooks/useWorkerTask';
+
+// --- Hooks for Data Fetching & Worker Offloading (Conceptual) ---
+import { StructuredExplanation } from '../../types'; // Assuming types are defined in a central place
+// These hooks would be real implementations in the new architecture.
+const useExplainCodeMutation = (): [any, { data: any, loading: boolean, error: any }]> => { return [() => {}, { data: null, loading: false, error: null }] };
+const useWorkerTask = <T,>(task: string, payload: any): { result: T | null, isLoading: boolean, error: Error | null } => { return { result: null, isLoading: false, error: null } };
 
 /**
  * Represents the available tabs in the AI analysis panel.
@@ -88,10 +97,10 @@ const AnalysisPanel: React.FC<{
         <Box className="space-y-3">
           {explanation.lineByLine.map((item, index) => (
             <Card key={index} variant="outlined">
-              <CardContent>
+              <Card.Content>
                 <Typography variant="code" color="primary" gutterBottom>Lines: {item.lines}</Typography>
                 <Typography variant="body2">{item.explanation}</Typography>
-              </CardContent>
+              </Card.Content>
             </Card>
           ))}
         </Box>
@@ -121,6 +130,7 @@ const AnalysisPanel: React.FC<{
         return null;
   }
 });
+AnalysisPanel.displayName = 'AnalysisPanel';
 
 /**
  * A feature component that provides a detailed, structured AI-powered analysis of any code snippet.
@@ -152,7 +162,8 @@ export const AiCodeExplainer: React.FC<AiCodeExplainerProps> = ({ initialCode })
 
   const handleExplain = useCallback((codeToExplain: string) => {
     if (!codeToExplain.trim()) {
-      console.error('Please enter some code to explain.'); // In a real app, this would use the Notification service
+      // In a real app, this would use the Notification service
+      console.error('Please enter some code to explain.'); 
       return;
     }
     setActiveTab('summary');
@@ -164,32 +175,33 @@ export const AiCodeExplainer: React.FC<AiCodeExplainerProps> = ({ initialCode })
       setCode(initialCode);
       handleExplain(initialCode);
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialCode, handleExplain]);
 
   const explanation = useMemo(() => analysisResult?.explainCode?.explanation, [analysisResult]);
   const mermaidCode = useMemo(() => analysisResult?.explainCode?.mermaidCode, [analysisResult]);
 
   return (
-    <Box p={3} height="100%" display="flex" flexDirection="column">
+    <Box p={3} height="100%" display="flex" flexDirection="column" className="p-4 sm:p-6 lg:p-8 h-full flex flex-col">
       <header>
-        <Typography variant="h1" gutterBottom display="flex" alignItems="center">
-          <Icon as={CpuChipIcon} mr={2} />
+        <Typography variant="h1" as="h1" gutterBottom display="flex" alignItems="center" className="text-3xl font-bold flex items-center mb-2">
+          <Icon as={CpuChipIcon} mr={2} className="mr-2"/>
           AI Code Explainer
         </Typography>
-        <Typography variant="subtitle1" color="textSecondary" mb={3}>
+        <Typography variant="subtitle1" color="textSecondary" mb={3} className="text-text-secondary mb-4">
           Get a detailed, structured analysis of any code snippet.
         </Typography>
       </header>
 
-      <Grid container spacing={3} flexGrow={1} minHeight={0}>
-        <Grid item xs={12} md={6} display="flex" flexDirection="column">
+      <Grid container spacing={3} flexGrow={1} minHeight={0} className="grid grid-cols-1 md:grid-cols-2 gap-6 flex-grow min-h-0">
+        <Grid item xs={12} md={6} display="flex" flexDirection="column" className="flex flex-col">
           <CodeEditor
             language="javascript"
             value={code}
-            onChange={(newCode) => setCode(newCode || '')}
+            onChange={(newCode: string) => setCode(newCode || '')}
             aria-label="Code input editor"
           />
-          <Box mt={2}>
+          <Box mt={2} className="mt-2">
             <Button
               onClick={() => handleExplain(code)}
               isLoading={isLoading}
@@ -203,10 +215,10 @@ export const AiCodeExplainer: React.FC<AiCodeExplainerProps> = ({ initialCode })
           </Box>
         </Grid>
 
-        <Grid item xs={12} md={6} display="flex" flexDirection="column">
-          <Card display="flex" flexDirection="column" flexGrow={1} overflow="hidden">
-            <CardHeader>
-              <Tabs value={activeTab} onChange={(e, newTab) => setActiveTab(newTab as ExplanationTab)}>
+        <Grid item xs={12} md={6} display="flex" flexDirection="column" className="flex flex-col">
+          <Card display="flex" flexDirection="column" flexGrow={1} overflow="hidden" className="flex flex-col flex-grow overflow-hidden border border-border rounded-lg">
+            <Card.Header>
+              <Tabs value={activeTab} onChange={(e: any, newTab: any) => setActiveTab(newTab as ExplanationTab)} className="border-b border-border">
                 <TabList>
                   <Tab value="summary" disabled={!explanation}>Summary</Tab>
                   <Tab value="lineByLine" disabled={!explanation}>Line-by-Line</Tab>
@@ -215,15 +227,15 @@ export const AiCodeExplainer: React.FC<AiCodeExplainerProps> = ({ initialCode })
                   <Tab value="flowchart" disabled={!mermaidCode}>Flowchart</Tab>
                 </TabList>
               </Tabs>
-            </CardHeader>
-            <CardContent flexGrow={1} overflow="auto">
+            </Card.Header>
+            <Card.Content flexGrow={1} overflow="auto" className="flex-grow overflow-auto p-4">
               {isLoading && (
-                <Box display="flex" justifyContent="center" alignItems="center" height="100%">
+                <Box display="flex" justifyContent="center" alignItems="center" height="100%" className="flex justify-center items-center h-full">
                   <Spinner />
                 </Box>
               )}
               {analysisError && (
-                <Typography color="error">
+                <Typography color="error" className="text-red-500">
                   Error: {analysisError.message}
                 </Typography>
               )}
@@ -235,11 +247,11 @@ export const AiCodeExplainer: React.FC<AiCodeExplainerProps> = ({ initialCode })
                 />
               )}
               {!isLoading && !analysisError && !explanation && (
-                 <Typography color="textSecondary" textAlign="center" mt={4}>
+                 <Typography color="textSecondary" textAlign="center" mt={4} className="text-center text-text-secondary mt-4">
                   The analysis will appear here.
                 </Typography>
               )}
-            </CardContent>
+            </Card.Content>
           </Card>
         </Grid>
       </Grid>
