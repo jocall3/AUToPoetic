@@ -7,11 +7,12 @@
  * @see module:services/bffService for the underlying API client.
  * @security All GitHub API interactions are proxied through the BFF. The client application
  * never handles GitHub personal access tokens or other secrets.
+ * @version 2.0.0
  */
 
 import { injectable, inject } from 'inversify';
 import 'reflect-metadata';
-import type { Repo, FileNode } from '../types';
+import type { Repo, FileNode, GitHubFile } from '../types'; // Assumes GitHubFile is defined in types.ts
 import { IBffApiClient } from './bffService'; // Assumed to exist in the new architecture
 import { SERVICE_IDENTIFIERS } from './serviceIdentifiers'; // Assumed to exist for DI
 
@@ -27,11 +28,13 @@ import { SERVICE_IDENTIFIERS } from './serviceIdentifiers'; // Assumed to exist 
 export interface IGitHubService {
   /**
    * Fetches the repositories for the currently authenticated user.
+   * @param {string} [owner] - The owner of the repositories to fetch.
+   * @param {number} [limit] - The maximum number of repositories to return.
    * @returns {Promise<Repo[]>} A promise that resolves to an array of repository objects.
    * @throws {Error} If the GraphQL request to the BFF fails or returns an error.
-   * @example const repos = await githubService.getRepos();
+   * @example const repos = await githubService.getRepos('my-username', 10);
    */
-  getRepos(): Promise<Repo[]>;
+  getRepos(owner?: string, limit?: number): Promise<Repo[]>;
 
   /**
    * Fetches the hierarchical file tree for a specific repository.
@@ -48,33 +51,37 @@ export interface IGitHubService {
    * @param {string} owner - The owner of the repository.
    * @param {string} repo - The name of the repository.
    * @param {string} path - The path to the file within the repository.
-   * @returns {Promise<string>} A promise that resolves to the string content of the file.
+   * @returns {Promise<GitHubFile>} A promise that resolves to the GitHubFile object containing the file content.
    * @throws {Error} If the GraphQL request to the BFF fails or returns an error.
-   * @example const content = await githubService.getFileContent('my-org', 'my-repo', 'src/index.ts');
+   * @example const file = await githubService.getFileContent('my-org', 'my-repo', 'src/index.ts');
    */
-  getFileContent(owner: string, repo: string, path: string): Promise<string>;
+  getFileContent(owner: string, repo: string, path: string): Promise<GitHubFile>;
 
   /**
-   * Commits one or more file changes to a branch in a repository.
+   * Commits a single file change to a branch in a repository.
+   * This aligns with the BFF's single-file commit mutation.
    * @param {string} owner - The owner of the repository.
    * @param {string} repo - The name of the repository.
-   * @param {Array<{ path: string; content: string }>} files - An array of file objects to commit.
+   * @param {string} path - The path of the file to commit.
+   * @param {string} content - The new content for the file.
    * @param {string} message - The commit message.
    * @param {string} [branch='main'] - The branch to commit to. Defaults to 'main'.
    * @returns {Promise<string>} A promise that resolves to the URL of the new commit.
    * @throws {Error} If the GraphQL mutation to the BFF fails or returns an error.
    * @example
-   * await githubService.commitFiles(
+   * await githubService.commitFile(
    *   'my-org',
    *   'my-repo',
-   *   [{ path: 'README.md', content: 'New content' }],
+   *   'README.md',
+   *   'New content',
    *   'feat: Update README'
    * );
    */
-  commitFiles(
+  commitFile(
     owner: string,
     repo: string,
-    files: { path: string; content: string }[],
+    path: string,
+    content: string,
     message: string,
     branch?: string
   ): Promise<string>;
@@ -83,7 +90,8 @@ export interface IGitHubService {
 /**
  * @class GitHubAdapter
  * @implements {IGitHubService}
- * @description Implements the IGitHubService interface by making GraphQL requests to the BFF.
+ * @description Implements the IGitHubService interface by making GraphQL requests to the BFF,
+ *              conforming to the defined GraphQL schema.
  * This class is part of the Infrastructure layer and is managed by a DI container.
  * @injectable
  * @performance This adapter's performance is dependent on the network latency to the BFF
@@ -106,34 +114,38 @@ export class GitHubAdapter implements IGitHubService {
   /**
    * @inheritdoc
    */
-  public async getRepos(): Promise<Repo[]> {
+  public async getRepos(owner?: string, limit?: number): Promise<Repo[]> {
     const query = `
-      query GetUserRepos {
-        github {
-          repos {
-            id
-            name
-            full_name
-            private
-            html_url
-            description
-          }
+      query GetUserRepos($owner: String, $limit: Int) {
+        githubRepos(owner: $owner, limit: $limit) {
+          id
+          name
+          fullName
+          private
+          htmlUrl
+          description
+          owner
         }
       }
     `;
 
-    const response = await this.bffClient.query<{ github: { repos: Repo[] } }>(query);
-    return response.github.repos;
+    const variables = { owner, limit };
+    const response = await this.bffClient.query<{ githubRepos: Repo[] }>(query, variables);
+    return response.githubRepos;
   }
 
   /**
    * @inheritdoc
    */
   public async getRepoTree(owner: string, repo: string): Promise<FileNode> {
+    // Assuming the BFF schema includes 'githubRepoTree' as it's a critical feature.
     const query = `
       query GetRepoTree($owner: String!, $repo: String!) {
-        github {
-          repoTree(owner: $owner, repo: $repo) {
+        githubRepoTree(owner: $owner, repo: $repo) {
+          name
+          path
+          type
+          children {
             name
             path
             type
@@ -145,11 +157,6 @@ export class GitHubAdapter implements IGitHubService {
                 name
                 path
                 type
-                children {
-                  name
-                  path
-                  type
-                }
               }
             }
           }
@@ -158,52 +165,50 @@ export class GitHubAdapter implements IGitHubService {
     `;
 
     const variables = { owner, repo };
-    const response = await this.bffClient.query<{ github: { repoTree: FileNode } }>(query, variables);
-    // The BFF would recursively fetch the full tree and return it.
-    return response.github.repoTree;
+    const response = await this.bffClient.query<{ githubRepoTree: FileNode }>(query, variables);
+    return response.githubRepoTree;
   }
 
   /**
    * @inheritdoc
    */
-  public async getFileContent(owner: string, repo: string, path: string): Promise<string> {
+  public async getFileContent(owner: string, repo: string, path: string): Promise<GitHubFile> {
     const query = `
       query GetFileContent($owner: String!, $repo: String!, $path: String!) {
-        github {
-          fileContent(owner: $owner, repo: $repo, path: $path)
+        githubFileContent(owner: $owner, repo: $repo, path: $path) {
+          path
+          content
+          sha
         }
       }
     `;
 
     const variables = { owner, repo, path };
-    const response = await this.bffClient.query<{ github: { fileContent: string } }>(query, variables);
-    return response.github.fileContent;
+    const response = await this.bffClient.query<{ githubFileContent: GitHubFile }>(query, variables);
+    return response.githubFileContent;
   }
 
   /**
    * @inheritdoc
    */
-  public async commitFiles(
+  public async commitFile(
     owner: string,
     repo: string,
-    files: { path: string; content: string }[],
+    path: string,
+    content: string,
     message: string,
     branch: string = 'main'
   ): Promise<string> {
     const mutation = `
-      mutation CommitFiles($commitInput: GitHubCommitInput!) {
-        github {
-          commitFiles(input: $commitInput) {
-            commitUrl
-          }
-        }
+      mutation CommitFile($input: GitHubCommitFileInput!) {
+        githubCommitFile(input: $input)
       }
     `;
 
     const variables = { 
-      commitInput: { owner, repo, branch, message, files }
+      input: { owner, repo, branch, message, path, content }
     };
-    const response = await this.bffClient.mutate<{ github: { commitFiles: { commitUrl: string } } }>(mutation, variables);
-    return response.github.commitFiles.commitUrl;
+    const response = await this.bffClient.mutate<{ githubCommitFile: string }>(mutation, variables);
+    return response.githubCommitFile;
   }
 }
