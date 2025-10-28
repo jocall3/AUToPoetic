@@ -18,15 +18,20 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repository
+      - name: Checkout repository using PAT
         uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GH_PAT }}
+          submodules: false  # skip fetching submodules if not needed
 
       - name: Setup PNPM
         uses: pnpm/action-setup@v3
         with:
           version: 10
 
-      - name: Install dependencies
+      - name: Install dependencies (workspace)
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GH_PAT }}
         run: pnpm install --no-frozen-lockfile
 
       - name: Call Gemini API
