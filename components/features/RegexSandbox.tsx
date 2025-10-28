@@ -10,10 +10,15 @@
  * @performance The core regex matching logic is executed in a Web Worker to prevent blocking the main thread. A debounce mechanism is used on user input to limit the frequency of worker executions, optimizing resource usage.
  */
 
-import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
+import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import { generateRegExStream } from '../../services/aiService.ts';
+import { useNotification } from '../../contexts/NotificationContext.tsx';
 import { BeakerIcon, SparklesIcon } from '../icons.tsx';
 import { LoadingSpinner } from '../shared/index.tsx';
+
+// Architectural Transformation: In a real scenario, this would be a shared hook.
+// For now, we assume it's available.
+// import { useWorkerTask } from '@/hooks/useWorkerTask';
 
 // --- TYPE DEFINITIONS ---
 
@@ -52,90 +57,75 @@ type WorkerResponse = {
  * @type {Array<{name: string, pattern: string}>}
  */
 const commonPatterns = [
-    { name: 'Email', pattern: '/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.{2,}/g' },
+    { name: 'Email', pattern: '/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}/g' },
     { name: 'URL', pattern: '/https?:\\/\\/(www\\.)?[-a-zA-Z0-9@:%._\\+~#=]{1,256}\\.[a-zA-Z0-9()]{1,6}\\b([-a-zA-Z0-9()@:%_\\+.~#?&//=]*)/g' },
-    { name: 'IPv4 Address', pattern: '/((25[0-5]|(2[0-4]|1\\d|[1-9]|)\\d)\\.?\\b){4}/g' },
+    { name: 'IPv4 Address', pattern: '/((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)/g' },
     { name: 'Date (YYYY-MM-DD)', pattern: '/\\d{4}-\\d{2}-\\d{2}/g' },
 ];
 
-// --- WEB WORKER ---
+// --- MOCK WORKER HOOK (as per architectural directives) ---
 
-/**
- * The code for the regex matching Web Worker, defined as a string.
- * This allows the worker to be created from a Blob, avoiding the need for a separate file.
- * @performance By running regex matching in a worker, we prevent the main UI thread from freezing on complex patterns or large inputs.
- * @type {string}
- */
-const workerCode = `
-self.onmessage = (event) => {
-  const { pattern, testString } = event.data;
-  try {
-    const patternParts = pattern.match(/^\\/(.*)\\/([gimyusd]*)$/);
-    if (!patternParts) {
-      self.postMessage({ error: 'Invalid regex literal. Use /pattern/flags.' });
-      return;
-    }
-    const [, regexBody, regexFlags] = patternParts;
-    const finalFlags = regexFlags.includes('g') ? regexFlags : regexFlags + 'g';
-    const regex = new RegExp(regexBody, finalFlags);
-    const matches = [...testString.matchAll(regex)];
-    const serializableMatches = matches.map(match => ({
-        match: match[0],
-        groups: match.groups ? { ...match.groups } : {},
-        index: match.index,
-        input: match.input,
-        subgroups: Array.from(match)
-    }));
-    self.postMessage({ matches: serializableMatches });
-  } catch (e) {
-    self.postMessage({ error: e instanceof Error ? e.message : 'Unknown worker error.' });
-  }
-};
-`;
+// This mock simulates the `useWorkerTask` hook that would be provided by the new architecture.
+// It uses a real worker created from a Blob to demonstrate the pattern correctly.
+const useWorkerTask = (taskName: string, payload: any) => {
+  const [result, setResult] = useState<{ data: any | null; error: string | null; isLoading: boolean }>({ data: null, error: null, isLoading: false });
+  const workerRef = React.useRef<Worker>();
 
-/**
- * Custom hook to manage the lifecycle and communication of the regex Web Worker.
- * Encapsulates the creation of the worker from a Blob URL and provides a stable interface.
- * @returns {{ postMessage: (pattern: string, testString: string) => void, onMessage: (callback: (data: WorkerResponse) => void) => void }}
- */
-const useRegexWorker = () => {
-    const workerRef = useRef<Worker | null>(null);
-
-    useEffect(() => {
-        const blob = new Blob([workerCode], { type: 'application/javascript' });
-        const workerUrl = URL.createObjectURL(blob);
-        const worker = new Worker(workerUrl);
-        workerRef.current = worker;
-
-        return () => {
-            worker.terminate();
-            URL.revokeObjectURL(workerUrl);
-            workerRef.current = null;
-        };
-    }, []);
-
-    const postMessage = useCallback((pattern: string, testString: string) => {
-        workerRef.current?.postMessage({ pattern, testString });
-    }, []);
-
-    const onMessage = useCallback((callback: (data: WorkerResponse) => void) => {
-        if (workerRef.current) {
-            workerRef.current.onmessage = (event: MessageEvent<WorkerResponse>) => {
-                callback(event.data);
-            };
+  useEffect(() => {
+    const workerCode = `
+      self.onmessage = (event) => {
+        const { taskName, payload } = event.data;
+        if (taskName === 'run-regex') {
+            const { pattern, testString } = payload;
+            try {
+                const patternParts = pattern.match(/^\\/(.*)\\/([gimyusd]*)$/);
+                if (!patternParts) {
+                    self.postMessage({ error: 'Invalid regex literal. Use /pattern/flags.' });
+                    return;
+                }
+                const [, regexBody, regexFlags] = patternParts;
+                const finalFlags = regexFlags.includes('g') ? regexFlags : regexFlags + 'g';
+                const regex = new RegExp(regexBody, finalFlags);
+                const matches = [...testString.matchAll(regex)];
+                const serializableMatches = matches.map(match => ({
+                    match: match[0],
+                    groups: match.groups ? { ...match.groups } : {},
+                    index: match.index,
+                    input: match.input,
+                    subgroups: Array.from(match)
+                }));
+                self.postMessage({ data: { matches: serializableMatches }, error: null });
+            } catch (e) {
+                self.postMessage({ data: null, error: e instanceof Error ? e.message : 'Unknown worker error.' });
+            }
         }
-    }, []);
-    
-    return { postMessage, onMessage };
-};
+      };
+    `;
+    const blob = new Blob([workerCode], { type: 'application/javascript' });
+    const worker = new Worker(URL.createObjectURL(blob));
+    workerRef.current = worker;
 
+    worker.onmessage = (event) => {
+      setResult({ data: event.data.data, error: event.data.error, isLoading: false });
+    };
+
+    return () => {
+      worker.terminate();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (payload && workerRef.current) {
+      setResult(prev => ({ ...prev, isLoading: true }));
+      workerRef.current.postMessage({ taskName, payload });
+    }
+  }, [taskName, payload]);
+
+  return result;
+};
 
 // --- UI HELPER COMPONENTS ---
 
-/**
- * Displays a cheat sheet for common regex syntax.
- * @returns {React.ReactElement} A stateless component rendering the cheat sheet.
- */
 const CheatSheet: React.FC = () => (
     <div className="bg-surface border border-border p-4 rounded-lg">
         <h3 className="text-lg font-bold mb-2">Regex Cheat Sheet</h3>
@@ -156,11 +146,6 @@ const CheatSheet: React.FC = () => (
     </div>
 );
 
-/**
- * Displays text with regex matches highlighted.
- * @param {{ text: string; matches: SerializableMatch[] | null }} props - Component props.
- * @returns {React.ReactElement} A component rendering highlighted text.
- */
 const HighlightedText: React.FC<{ text: string; matches: SerializableMatch[] | null }> = ({ text, matches }) => {
     const highlighted = useMemo(() => {
         if (!matches || matches.length === 0) return text;
@@ -179,11 +164,6 @@ const HighlightedText: React.FC<{ text: string; matches: SerializableMatch[] | n
     return <div className="whitespace-pre-wrap font-mono text-sm">{highlighted}</div>;
 };
 
-/**
- * Displays the details of all matched groups from the regex execution.
- * @param {{ matches: SerializableMatch[] | null }} props - Component props.
- * @returns {React.ReactElement} A component rendering match groups.
- */
 const MatchGroups: React.FC<{ matches: SerializableMatch[] | null }> = ({ matches }) => (
     <div className="flex-shrink-0">
         <h3 className="text-lg font-bold">Match Groups ({matches?.length || 0})</h3>
@@ -191,7 +171,7 @@ const MatchGroups: React.FC<{ matches: SerializableMatch[] | null }> = ({ matche
             {matches && matches.length > 0 ? (
                 matches.map((match, i) => (
                     <details key={i} className="p-2 border-b border-border last:border-b-0">
-                        <summary className="cursor-pointer text-green-600 dark:text-green-400">Match {i + 1}: "{match.match}"</summary>
+                        <summary className="cursor-pointer text-green-600 dark:text-green-400">Match {i + 1}: \"{match.match}\"</summary>
                         <div className="pl-4 mt-1 space-y-1">
                             {match.subgroups.map((group, gIndex) => 
                                 <p key={gIndex} className="text-text-secondary">
@@ -210,46 +190,25 @@ const MatchGroups: React.FC<{ matches: SerializableMatch[] | null }> = ({ matche
 
 // --- MAIN COMPONENT ---
 
-/**
- * The main component for the Regex Sandbox feature.
- * @param {{ initialPrompt?: string }} props - Component props.
- * @property {string} [initialPrompt] - An optional prompt to auto-generate a regex on load.
- * @returns {React.ReactElement} The rendered Regex Sandbox component.
- * @example <RegexSandbox initialPrompt="find all hex color codes" />
- */
 export const RegexSandbox: React.FC<{ initialPrompt?: string }> = ({ initialPrompt }) => {
     const [pattern, setPattern] = useState<string>('/\\b([A-Z][a-z]+)\\s(\\w+)\\b/g');
     const [testString, setTestString] = useState<string>('The quick Brown Fox jumps over the Lazy Dog.');
     const [aiPrompt, setAiPrompt] = useState<string>(initialPrompt || 'find capitalized words and the word after');
     const [isAiLoading, setIsAiLoading] = useState<boolean>(false);
+    const { addNotification } = useNotification();
 
-    const [matches, setMatches] = useState<SerializableMatch[] | null>(null);
-    const [matchError, setMatchError] = useState<string | null>(null);
-    const [isMatching, setIsMatching] = useState(false);
-    
-    const worker = useRegexWorker();
+    const [debouncedPayload, setDebouncedPayload] = useState({ pattern, testString });
 
     useEffect(() => {
-        worker.onMessage((data) => {
-            if (data.error) {
-                setMatchError(data.error);
-                setMatches(null);
-            } else {
-                setMatchError(null);
-                setMatches(data.matches ?? null);
-            }
-            setIsMatching(false);
-        });
-    }, [worker]);
-
-    useEffect(() => {
-        setIsMatching(true);
         const handler = setTimeout(() => {
-            worker.postMessage(pattern, testString);
+            setDebouncedPayload({ pattern, testString });
         }, 300); // Debounce worker calls
 
         return () => clearTimeout(handler);
-    }, [pattern, testString, worker]);
+    }, [pattern, testString]);
+
+    const { data, error: matchError, isLoading: isMatching } = useWorkerTask('run-regex', debouncedPayload);
+    const matches = data?.matches;
 
     const handleGenerateRegex = useCallback(async (p: string) => {
         if (!p) return;
@@ -262,10 +221,11 @@ export const RegexSandbox: React.FC<{ initialPrompt?: string }> = ({ initialProm
             }
             // Clean up potential markdown formatting from AI response
             setPattern(fullResponse.trim().replace(/^`+|`+$/g, '').replace(/^regex\n/, ''));
+            addNotification('AI generated a new regex!', 'success');
         } finally {
             setIsAiLoading(false);
         }
-    }, []);
+    }, [addNotification]);
 
     useEffect(() => { 
         if (initialPrompt) {
@@ -273,6 +233,11 @@ export const RegexSandbox: React.FC<{ initialPrompt?: string }> = ({ initialProm
         }
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [initialPrompt]);
+    
+    const handlePatternSelect = (name: string, newPattern: string) => {
+      setPattern(newPattern);
+      addNotification(`Loaded common pattern for ${name}.`, 'info');
+    };
 
     return (
         <div className="h-full flex flex-col p-4 sm:p-6 lg:p-8 text-text-primary">
@@ -306,7 +271,7 @@ export const RegexSandbox: React.FC<{ initialPrompt?: string }> = ({ initialProm
                         <h3 className="text-lg font-bold mb-2">Common Patterns</h3>
                         <div className="flex flex-col items-start gap-2">
                             {commonPatterns.map(p => (
-                                <button key={p.name} onClick={() => setPattern(p.pattern)} className="text-left text-sm text-primary hover:underline">
+                                <button key={p.name} onClick={() => handlePatternSelect(p.name, p.pattern)} className="text-left text-sm text-primary hover:underline">
                                     {p.name}
                                 </button>
                             ))}

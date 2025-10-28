@@ -13,20 +13,9 @@
  */
 
 import React, { useState, useMemo, useCallback } from 'react';
-
-// Assumed imports from the new proprietary UI framework
-import { Page } from '../../core_ui/Layout';
-import { Header } from '../../core_ui/Header';
-import { ContentGrid } from '../../core_ui/Layout';
-import { Card, CardHeader, CardContent } from '../../composite_ui/Card';
-import { FormSection } from '../../composite_ui/Form';
-import { Input, Select, ColorInput } from '../../core_ui/Input';
-import { Button } from '../../core_ui/Button';
-import { CodeBlock } from '../../core_ui/CodeBlock';
-import { CodeBracketSquareIcon, ArrowDownTrayIcon } from '../../core_ui/icons';
-
-// Assumed import from the new abstracted service layer
-import { downloadService } from '../../services/infrastructure/download.adapter';
+import { useNotification } from '../../contexts/NotificationContext';
+import { downloadFile } from '../../services/fileUtils';
+import { CodeBracketSquareIcon, ArrowDownTrayIcon, ClipboardDocumentIcon } from '../../components/icons';
 
 /**
  * @interface ManifestData
@@ -99,6 +88,7 @@ const HomeScreenPreview: React.FC<HomeScreenPreviewProps> = ({ manifest }) => (
  * <PwaManifestEditor />
  */
 export const PwaManifestEditor: React.FC = () => {
+  const { addNotification } = useNotification();
   const [manifest, setManifest] = useState<ManifestData>({
     name: 'DevCore Progressive Web App',
     short_name: 'DevCore',
@@ -116,61 +106,113 @@ export const PwaManifestEditor: React.FC = () => {
   }, []);
 
   const generatedJson = useMemo(() => {
-    /** @performance JSON.stringify can be expensive for very large objects, but for a manifest file, this is negligible. useMemo prevents re-calculation on every render. */
     const fullManifest = { ...manifest, icons: [{ "src": "icon-192.png", "type": "image/png", "sizes": "192x192" }, { "src": "icon-512.png", "type": "image/png", "sizes": "512x512" }] };
     return JSON.stringify(fullManifest, null, 2);
   }, [manifest]);
 
   const handleDownload = useCallback(() => {
-    downloadService.downloadAsFile(generatedJson, 'manifest.json', 'application/json');
-  }, [generatedJson]);
+    downloadFile(generatedJson, 'manifest.json', 'application/json');
+    addNotification('manifest.json has been downloaded.', 'success');
+  }, [generatedJson, addNotification]);
+
+  const handleCopy = useCallback(() => {
+    navigator.clipboard.writeText(generatedJson);
+    addNotification('Manifest JSON copied to clipboard!', 'success');
+  }, [generatedJson, addNotification]);
 
   return (
-    <Page>
-      <Header
-        icon={<CodeBracketSquareIcon />}
-        title="PWA Manifest Editor"
-        subtitle="Configure and generate the 'manifest.json' file for your PWA."
-      />
-      <ContentGrid className="grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
-        <Card className="xl:col-span-1 overflow-y-auto">
-          <CardHeader title="Configuration" />
-          <CardContent className="flex flex-col gap-4">
-            <FormSection title="Application Identity">
-              <Input label="App Name" name="name" value={manifest.name} onChange={handleChange} />
-              <Input label="Short Name" name="short_name" value={manifest.short_name} onChange={handleChange} />
-            </FormSection>
-            <FormSection title="URLs">
-              <Input label="Start URL" name="start_url" value={manifest.start_url} onChange={handleChange} />
-              <Input label="Scope" name="scope" value={manifest.scope} onChange={handleChange} />
-            </FormSection>
-            <FormSection title="Display">
-              <Select label="Display Mode" name="display" value={manifest.display} onChange={handleChange} options={['standalone', 'fullscreen', 'minimal-ui', 'browser']} />
-              <Select label="Orientation" name="orientation" value={manifest.orientation} onChange={handleChange} options={['any', 'natural', 'landscape', 'portrait']} />
-            </FormSection>
-            <FormSection title="Colors">
-              <div className="flex gap-4">
-                <ColorInput label="Background Color" name="background_color" value={manifest.background_color} onChange={handleChange} />
-                <ColorInput label="Theme Color" name="theme_color" value={manifest.theme_color} onChange={handleChange} />
+    <div className="h-full flex flex-col p-4 sm:p-6 lg:p-8 text-text-primary">
+      <header className="mb-6">
+        <h1 className="text-3xl font-bold flex items-center">
+            <CodeBracketSquareIcon />
+            <span className="ml-3">PWA Manifest Editor</span>
+        </h1>
+        <p className="text-text-secondary mt-1">Configure and generate the 'manifest.json' file for your PWA.</p>
+      </header>
+      <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6 flex-grow min-h-0">
+        <div className="bg-surface border border-border rounded-lg p-6 xl:col-span-1 overflow-y-auto space-y-6">
+          <div>
+            <h3 className="text-lg font-semibold mb-3">Application Identity</h3>
+            <div className="space-y-4">
+              <div>
+                <label htmlFor="name" className="block text-sm font-medium text-text-secondary">App Name</label>
+                <input type="text" name="name" id="name" value={manifest.name} onChange={handleChange} className="mt-1 block w-full rounded-md bg-background border-border shadow-sm focus:border-primary focus:ring-primary sm:text-sm p-2" />
               </div>
-            </FormSection>
-          </CardContent>
-        </Card>
+              <div>
+                <label htmlFor="short_name" className="block text-sm font-medium text-text-secondary">Short Name</label>
+                <input type="text" name="short_name" id="short_name" value={manifest.short_name} onChange={handleChange} className="mt-1 block w-full rounded-md bg-background border-border shadow-sm focus:border-primary focus:ring-primary sm:text-sm p-2" />
+              </div>
+            </div>
+          </div>
+          <div>
+            <h3 className="text-lg font-semibold mb-3">URLs</h3>
+            <div className="space-y-4">
+              <div>
+                <label htmlFor="start_url" className="block text-sm font-medium text-text-secondary">Start URL</label>
+                <input type="text" name="start_url" id="start_url" value={manifest.start_url} onChange={handleChange} className="mt-1 block w-full rounded-md bg-background border-border shadow-sm focus:border-primary focus:ring-primary sm:text-sm p-2" />
+              </div>
+              <div>
+                <label htmlFor="scope" className="block text-sm font-medium text-text-secondary">Scope</label>
+                <input type="text" name="scope" id="scope" value={manifest.scope} onChange={handleChange} className="mt-1 block w-full rounded-md bg-background border-border shadow-sm focus:border-primary focus:ring-primary sm:text-sm p-2" />
+              </div>
+            </div>
+          </div>
+          <div>
+            <h3 className="text-lg font-semibold mb-3">Display</h3>
+            <div className="space-y-4">
+              <div>
+                <label htmlFor="display" className="block text-sm font-medium text-text-secondary">Display Mode</label>
+                <select name="display" id="display" value={manifest.display} onChange={handleChange} className="mt-1 block w-full rounded-md bg-background border-border shadow-sm focus:border-primary focus:ring-primary sm:text-sm p-2">
+                  {['standalone', 'fullscreen', 'minimal-ui', 'browser'].map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                </select>
+              </div>
+              <div>
+                <label htmlFor="orientation" className="block text-sm font-medium text-text-secondary">Orientation</label>
+                <select name="orientation" id="orientation" value={manifest.orientation} onChange={handleChange} className="mt-1 block w-full rounded-md bg-background border-border shadow-sm focus:border-primary focus:ring-primary sm:text-sm p-2">
+                  {['any', 'natural', 'landscape', 'portrait'].map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                </select>
+              </div>
+            </div>
+          </div>
+          <div>
+            <h3 className="text-lg font-semibold mb-3">Colors</h3>
+            <div className="grid grid-cols-2 gap-4">
+                <div className="flex flex-col">
+                    <label htmlFor="background_color" className="block text-sm font-medium text-text-secondary mb-1">Background Color</label>
+                    <div className="flex items-center gap-2">
+                        <input type="color" id="background_color-picker" value={manifest.background_color} onChange={handleChange} name="background_color" className="w-10 h-10 p-0 border-none rounded cursor-pointer bg-transparent" />
+                        <input type="text" id="background_color" value={manifest.background_color} onChange={handleChange} name="background_color" className="block w-full rounded-md bg-background border-border shadow-sm focus:border-primary focus:ring-primary sm:text-sm p-2 font-mono" />
+                    </div>
+                </div>
+                <div className="flex flex-col">
+                    <label htmlFor="theme_color" className="block text-sm font-medium text-text-secondary mb-1">Theme Color</label>
+                    <div className="flex items-center gap-2">
+                        <input type="color" id="theme_color-picker" value={manifest.theme_color} onChange={handleChange} name="theme_color" className="w-10 h-10 p-0 border-none rounded cursor-pointer bg-transparent" />
+                        <input type="text" id="theme_color" value={manifest.theme_color} onChange={handleChange} name="theme_color" className="block w-full rounded-md bg-background border-border shadow-sm focus:border-primary focus:ring-primary sm:text-sm p-2 font-mono" />
+                    </div>
+                </div>
+            </div>
+          </div>
+        </div>
 
-        <Card className="xl:col-span-1 flex flex-col">
-          <CardHeader title="Generated manifest.json">
-            <Button onClick={handleDownload} icon={<ArrowDownTrayIcon />} variant="secondary">Download</Button>
-          </CardHeader>
-          <CardContent className="flex-grow min-h-0">
-            <CodeBlock language="json" code={generatedJson} className="h-full" />
-          </CardContent>
-        </Card>
+        <div className="bg-surface border border-border rounded-lg xl:col-span-1 flex flex-col min-h-0">
+          <header className="flex justify-between items-center p-4 border-b border-border">
+            <h3 className="text-lg font-semibold">Generated manifest.json</h3>
+            <div className="flex items-center gap-2">
+                <button onClick={handleCopy} className="flex items-center gap-1 px-3 py-1 bg-gray-100 dark:bg-slate-700 text-xs rounded-md hover:bg-gray-200 dark:hover:bg-slate-600"><ClipboardDocumentIcon className="w-4 h-4"/> Copy</button>
+                <button onClick={handleDownload} className="flex items-center gap-1 px-3 py-1 bg-gray-100 dark:bg-slate-700 text-xs rounded-md hover:bg-gray-200 dark:hover:bg-slate-600"><ArrowDownTrayIcon className="w-4 h-4"/> Download</button>
+            </div>
+          </header>
+          <div className="flex-grow overflow-auto p-4">
+            <pre><code className="language-json text-sm">{generatedJson}</code></pre>
+          </div>
+        </div>
 
-        <div className="hidden xl:flex flex-col items-center justify-center">
-          <h3 className="text-sm font-medium text-text-secondary mb-4">Live Preview</h3>
+        <div className="hidden xl:flex flex-col items-center justify-center p-6">
+          <h3 className="text-lg font-semibold mb-4">Live Preview</h3>
           <HomeScreenPreview manifest={manifest} />
         </div>
-      </ContentGrid>
-    </Page>
+      </div>
+    </div>
   );
 };
