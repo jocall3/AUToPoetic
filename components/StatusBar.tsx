@@ -204,4 +204,3 @@ export const StatusBar: FC<{ bgImageStatus: BgImageStatus }> = ({ bgImageStatus 
     </footer>
   );
 };
-};
