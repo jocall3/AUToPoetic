@@ -431,7 +431,7 @@ importers:
         specifier: ^5.5.2
         version: 5.9.2
 
-  packages/workspace:*
+  packages/workspace-providers:
     dependencies:
       '@devcore/core-ui':
         specifier: workspace:*
