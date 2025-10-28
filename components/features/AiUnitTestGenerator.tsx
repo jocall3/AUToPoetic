@@ -9,12 +9,10 @@
  */
 
 import React, { useState, useCallback, useEffect } from 'react';
-import { BeakerIcon, ArrowDownTrayIcon, ClipboardDocumentIcon } from '@/ui/core/Icons'; // Imagined icon library
-import { Button, Panel, Header, Tooltip, ButtonGroup } from '@/ui/core'; // Imagined core UI library
-import { CodeEditor, CodeViewer, TwoPanelLayout, LoadingIndicator, EmptyState, ErrorState } from '@/ui/composite'; // Imagined composite UI library
-import { useNotification } from '@/ui/ThemeEngine'; // Imagined notification service from the ThemeEngine
-import { workerPoolManager } from '@/services/WorkerPoolManager'; // Worker pool manager service
-import { TaskMessage } from '@/types'; // Shared types for worker communication
+import { generateUnitTestsStream } from '../../services/aiService';
+import { BeakerIcon, ArrowDownTrayIcon, ClipboardDocumentIcon } from '../icons';
+import { LoadingSpinner, MarkdownRenderer } from '../shared';
+import { useNotification } from '../../contexts/NotificationContext';
 
 /**
  * An example code snippet to display when the component is first loaded.
@@ -48,154 +46,67 @@ interface AiUnitTestGeneratorProps {
  * @returns {React.ReactElement} The rendered AiUnitTestGenerator component.
  */
 export const AiUnitTestGenerator: React.FC<AiUnitTestGeneratorProps> = ({ initialCode }) => {
-  /**
-   * @state
-   * @description The source code input by the user, for which tests will be generated.
-   * @type {[string, React.Dispatch<React.SetStateAction<string>>]}
-   */
   const [code, setCode] = useState<string>(initialCode || EXAMPLE_CODE);
-
-  /**
-   * @state
-   * @description The AI-generated unit test code, received as a stream and accumulated.
-   * @type {[string, React.Dispatch<React.SetStateAction<string>>]}
-   */
   const [tests, setTests] = useState<string>('');
-
-  /**
-   * @state
-   * @description The loading state of the AI generation process.
-   * @type {[boolean, React.Dispatch<React.SetStateAction<boolean>>]}
-   */
   const [isLoading, setIsLoading] = useState<boolean>(false);
-
-  /**
-   * @state
-   * @description Any error message that occurs during the generation process.
-   * @type {[string, React.Dispatch<React.SetStateAction<string>>]}
-   */
   const [error, setError] = useState<string>('');
-
-  /**
-   * @state
-   * @description A unique ID for the current worker task, used to correlate messages.
-   * @type {[string | null, React.Dispatch<React.SetStateAction<string | null>>]}
-   */
-  const [currentTaskId, setCurrentTaskId] = useState<string | null>(null);
 
   const { addNotification } = useNotification();
 
   /**
-   * Cleans the AI-generated markdown to extract only the raw code for download or copying.
-   * @function cleanCodeForUtility
-   * @param {string} markdown - The markdown content from the AI.
-   * @returns {string} The extracted code block content.
-   * @performance A simple string manipulation with negligible performance impact.
-   */
-  const cleanCodeForUtility = (markdown: string): string => {
-    const codeBlockRegex = /```(?:[jt]sx?|javascript)?\n([\s\S]*?)```/;
-    const match = markdown.match(codeBlockRegex);
-    return match ? match[1].trim() : markdown.trim();
-  };
-
-  /**
-   * Initiates the unit test generation process by posting a task to the worker pool.
-   * This function sets up the initial state for loading and clears previous results.
+   * Initiates the unit test generation process.
    * @function handleGenerate
    * @returns {void}
-   * @security User-provided code is sent to a sandboxed worker, isolating it from the main thread. The worker is responsible for secure communication with the BFF.
-   * @performance Offloads the entire generation process to a web worker, keeping the UI thread free. The initial task posting is negligible.
    */
-  const handleGenerate = useCallback(() => {
+  const handleGenerate = useCallback(async () => {
     if (!code.trim()) {
       setError('Please enter some code to generate tests for.');
       addNotification('Source code cannot be empty.', 'error');
       return;
     }
 
-    if (currentTaskId) {
-      workerPoolManager.terminateTask(currentTaskId);
-    }
-
     setIsLoading(true);
     setError('');
     setTests('');
 
-    const taskId = `unit-test-${Date.now()}`;
-    setCurrentTaskId(taskId);
+    try {
+      const stream = generateUnitTestsStream(code);
+      let fullResponse = '';
+      for await (const chunk of stream) {
+        fullResponse += chunk;
+        setTests(fullResponse);
+      }
+      addNotification('Test generation complete.', 'success');
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'An unknown error occurred.';
+      setError(errorMessage);
+      addNotification('Failed to generate tests.', 'error');
+    } finally {
+      setIsLoading(false);
+    }
+  }, [code, addNotification]);
 
-    workerPoolManager.postTask<string>({
-      taskId,
-      type: 'GENERATE_UNIT_TESTS_STREAM',
-      payload: code,
-    });
-  }, [code, currentTaskId, addNotification]);
-
-  /**
-   * An effect hook to listen for messages from the web worker.
-   * It handles incoming stream chunks, errors, and completion signals from the active task.
-   * @effect
-   */
   useEffect(() => {
-    if (!currentTaskId) return;
+    if (initialCode) {
+      handleGenerate();
+    }
+  }, [initialCode, handleGenerate]);
 
-    /**
-     * Processes messages from the worker pool, updating the component's state accordingly.
-     * @handler
-     * @param {MessageEvent<TaskMessage<string>>} event - The message event from the worker.
-     */
-    const handleWorkerMessage = (event: MessageEvent<TaskMessage<string>>) => {
-      const { taskId, type, payload, error } = event.data;
-      if (taskId !== currentTaskId) return; // Ignore messages from stale tasks
+  const cleanCodeForUtility = (markdown: string): string => {
+    const codeBlockRegex = /```(?:[jt]sx?|javascript)?\n([\s\S]*?)```/;
+    const match = markdown.match(codeBlockRegex);
+    return match ? match[1].trim() : markdown.trim();
+  };
 
-      switch (type) {
-        case 'STREAM_CHUNK':
-          setTests(prev => prev + payload);
-          break;
-        case 'STREAM_ERROR':
-          setError(error || 'An unknown error occurred in the worker.');
-          addNotification('Failed to generate tests.', 'error');
-          setIsLoading(false);
-          setCurrentTaskId(null);
-          break;
-        case 'STREAM_COMPLETE':
-          setIsLoading(false);
-          setCurrentTaskId(null);
-          addNotification('Test generation complete.', 'success');
-          break;
-      }
-    };
-
-    workerPoolManager.addEventListener('message', handleWorkerMessage);
-
-    return () => {
-      workerPoolManager.removeEventListener('message', handleWorkerMessage);
-      if (currentTaskId) {
-        workerPoolManager.terminateTask(currentTaskId);
-      }
-    };
-  }, [currentTaskId, addNotification]);
-
-  /**
-   * Copies the generated test code to the user's clipboard.
-   * @function handleCopy
-   * @returns {void}
-   */
   const handleCopy = useCallback(() => {
     if (!tests) return;
     navigator.clipboard.writeText(cleanCodeForUtility(tests));
     addNotification('Test code copied to clipboard!', 'success');
   }, [tests, addNotification]);
 
-  /**
-   * Triggers a file download of the generated test code.
-   * @function handleDownload
-   * @returns {void}
-   */
   const handleDownload = useCallback(() => {
     if (!tests) return;
     const content = cleanCodeForUtility(tests);
-    // A real implementation would use a service from the Infrastructure layer
     const blob = new Blob([content], { type: 'text/typescript' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -209,54 +120,57 @@ export const AiUnitTestGenerator: React.FC<AiUnitTestGeneratorProps> = ({ initia
   }, [tests, addNotification]);
 
   return (
-    <TwoPanelLayout>
-      <TwoPanelLayout.Left>
-        <Panel className="h-full flex flex-col">
-          <Header title="Source Code" />
-          <CodeEditor
+    <div className="h-full flex flex-col p-4 sm:p-6 lg:p-8 text-text-primary">
+      <header className="mb-6">
+        <h1 className="text-3xl font-bold flex items-center">
+          <BeakerIcon />
+          <span className="ml-3">AI Unit Test Generator</span>
+        </h1>
+        <p className="text-text-secondary mt-1">Generate Vitest unit tests for your components and functions.</p>
+      </header>
+      <div className="flex-grow grid grid-cols-1 lg:grid-cols-2 gap-6 min-h-0">
+        <div className="flex flex-col h-full">
+          <label htmlFor="source-code-input" className="text-sm font-medium text-text-secondary mb-2">Source Code</label>
+          <textarea
+            id="source-code-input"
             value={code}
-            onChange={setCode}
-            language="javascript"
-            className="flex-grow"
+            onChange={(e) => setCode(e.target.value)}
+            className="flex-grow p-4 bg-surface border border-border rounded-md resize-none font-mono text-sm focus:ring-2 focus:ring-primary focus:outline-none"
+            placeholder="Paste your code here..."
           />
-          <Panel.Footer>
-            <Button
-              onClick={handleGenerate}
-              disabled={isLoading}
-              icon={<BeakerIcon />}
-              className="w-full"
-              aria-label="Generate Unit Tests"
-            >
-              {isLoading ? 'Generating...' : 'Generate Unit Tests'}
-            </Button>
-          </Panel.Footer>
-        </Panel>
-      </TwoPanelLayout.Left>
-
-      <TwoPanelLayout.Right>
-        <Panel className="h-full flex flex-col">
-          <Header title="Generated Tests">
-            <ButtonGroup>
-              <Tooltip content="Copy Code">
-                <Button variant="ghost" onClick={handleCopy} disabled={isLoading || !tests} aria-label="Copy generated tests">
-                  <ClipboardDocumentIcon />
-                </Button>
-              </Tooltip>
-              <Tooltip content="Download File">
-                <Button variant="ghost" onClick={handleDownload} disabled={isLoading || !tests} aria-label="Download generated tests">
-                  <ArrowDownTrayIcon />
-                </Button>
-              </Tooltip>
-            </ButtonGroup>
-          </Header>
-          <Panel.Content className="p-0">
-            {isLoading && !tests && <LoadingIndicator text="AI is generating tests..." />}
-            {error && <ErrorState message={error} />}
-            {tests && <CodeViewer code={`\`\`\`tsx\n${cleanCodeForUtility(tests)}\n\`\`\``} language="javascript" className="flex-grow" />}
-            {!isLoading && !tests && !error && <EmptyState message="The generated tests will appear here." />}
-          </Panel.Content>
-        </Panel>
-      </TwoPanelLayout.Right>
-    </TwoPanelLayout>
+          <button onClick={handleGenerate} disabled={isLoading} className="btn-primary mt-4 w-full flex items-center justify-center px-6 py-3">
+            {isLoading ? <LoadingSpinner /> : 'Generate Tests'}
+          </button>
+        </div>
+        <div className="flex flex-col h-full">
+          <div className="flex justify-between items-center mb-2">
+            <label className="text-sm font-medium text-text-secondary">Generated Tests</label>
+            <div className="flex items-center gap-2">
+              <button onClick={handleCopy} disabled={!tests || isLoading} className="p-1 text-text-secondary hover:text-primary disabled:opacity-50" title="Copy Code">
+                <ClipboardDocumentIcon />
+              </button>
+              <button onClick={handleDownload} disabled={!tests || isLoading} className="p-1 text-text-secondary hover:text-primary disabled:opacity-50" title="Download File">
+                <ArrowDownTrayIcon />
+              </button>
+            </div>
+          </div>
+          <div className="flex-grow p-1 bg-background border border-border rounded-lg overflow-auto">
+            {isLoading && !tests && (
+              <div className="flex items-center justify-center h-full">
+                <LoadingSpinner />
+                <span className="ml-2 text-text-secondary">AI is writing tests...</span>
+              </div>
+            )}
+            {error && <div className="p-4 text-red-500 font-mono text-xs whitespace-pre-wrap">{error}</div>}
+            {tests && <MarkdownRenderer content={tests} />}
+            {!isLoading && !tests && !error && (
+              <div className="flex items-center justify-center h-full text-text-secondary">
+                Generated tests will appear here.
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
   );
 };

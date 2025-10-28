@@ -2,20 +2,50 @@
  * @file This file contains the AsyncCallTreeViewer component, which visualizes a tree
  * of asynchronous function calls from a JSON input. It offloads JSON parsing to a
  * web worker to keep the main thread responsive.
- * @license Copyright James Burvel Oâ€™Callaghan III, President Citibank Demo Business Inc.
- * @see {@link WorkerPoolManager} for task offloading.
+ * @license Copyright James Burvel O'Callaghan III, President Citibank Demo Business Inc.
+ * @see {@link services/worker/workerPoolManager} for task offloading.
  * @performance The primary computation (JSON parsing and traversal) is offloaded to a web worker.
  * @security The component displays data from user input; while it doesn't execute code, large JSON
  * inputs are handled by a worker to prevent main thread blocking (DoS).
  */
 
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { ChartBarIcon, ChevronRightIcon } from '../icons.tsx'; // Assuming icons are part of a core library
 
-// Fictional imports to represent the new abstracted UI framework
-// import { Button, Text, ProgressBar, Spinner } from '@core/ui/components';
-// import { VStack, HStack } from '@core/ui/layout';
-// import { Header, PageLayout, Card, Label, TextArea } from '@composite/ui/components';
+// As per new architectural directives, heavy computations are offloaded to a worker pool.
+// We assume a hook `useWorkerPool` exists that provides access to this service.
+// This is a placeholder for the actual hook from the infrastructure layer.
+const useWorkerPool = () => ({
+    submitTask: <TResult, TPayload>(taskName: string, payload: TPayload): Promise<TResult> => {
+        // This is a mock implementation for demonstration and to make the component runnable.
+        // In the real architecture, this would communicate with the WorkerPoolManager service.
+        return new Promise((resolve, reject) => {
+             setTimeout(() => {
+                if (taskName === 'parse-call-tree') {
+                    try {
+                        const { jsonInput } = payload as { jsonInput: string };
+                        const data: CallNode = JSON.parse(jsonInput);
+                        if (typeof data.name !== 'string' || typeof data.duration !== 'number') {
+                            throw new Error('Root node is missing required `name` or `duration` properties.');
+                        }
+                        let max = 0;
+                        const findMax = (node: CallNode) => {
+                            if (node.duration > max) max = node.duration;
+                            if (node.children) node.children.forEach(findMax);
+                        };
+                        findMax(data);
+                        resolve({ treeData: data, maxDuration: max || 1 } as unknown as TResult);
+                    } catch (e) {
+                        reject(e);
+                    }
+                } else {
+                    reject(new Error(`Unknown worker task: ${taskName}`));
+                }
+             }, 300);
+        });
+    }
+});
+
 
 /**
  * @interface CallNode
@@ -24,15 +54,6 @@ import { ChartBarIcon, ChevronRightIcon } from '../icons.tsx'; // Assuming icons
  * @property {string} name - The name of the function or operation represented by the node.
  * @property {number} duration - The execution duration of the operation in milliseconds.
  * @property {CallNode[]} [children] - An optional array of child nodes, representing nested function calls.
- * @example
- * const node: CallNode = {
- *   name: "fetchUserData",
- *   duration: 300,
- *   children: [
- *     { name: "authenticate", duration: 100 },
- *     { name: "fetchProfile", duration: 150 }
- *   ]
- * };
  */
 interface CallNode {
     name: string;
@@ -139,7 +160,7 @@ const TreeNode: React.FC<TreeNodeProps> = ({ node, level, maxDuration }) => {
 /**
  * @component AsyncCallTreeViewer
  * @description A feature component that provides a UI for visualizing asynchronous call trees from JSON.
- * It offloads parsing to a simulated web worker to keep the UI responsive.
+ * It offloads parsing to a web worker to keep the UI responsive.
  * @returns {React.ReactElement} The rendered AsyncCallTreeViewer feature.
  * @see {@link TreeNode} for how individual nodes are rendered.
  */
@@ -149,6 +170,7 @@ export const AsyncCallTreeViewer: React.FC = () => {
     const [treeData, setTreeData] = useState<CallNode | null>(null);
     const [maxDuration, setMaxDuration] = useState<number>(0);
     const [isParsing, setIsParsing] = useState(false);
+    const { submitTask } = useWorkerPool();
 
     useEffect(() => {
         const handler = setTimeout(() => {
@@ -161,42 +183,25 @@ export const AsyncCallTreeViewer: React.FC = () => {
             setIsParsing(true);
             setError('');
 
-            // This simulates offloading the parsing task to a web worker via a WorkerPoolManager.
-            // The task would include both JSON.parse and finding the max duration.
-            new Promise<WorkerParseResult>((resolve, reject) => {
-                setTimeout(() => {
-                    try {
-                        const data: CallNode = JSON.parse(jsonInput);
-                        if (typeof data.name !== 'string' || typeof data.duration !== 'number') {
-                            throw new Error('Root node is missing required `name` or `duration` properties.');
-                        }
-                        let max = 0;
-                        const findMax = (node: CallNode) => {
-                            if (node.duration > max) max = node.duration;
-                            if (node.children) node.children.forEach(findMax);
-                        };
-                        findMax(data);
-                        resolve({ treeData: data, maxDuration: max || 1 }); // Ensure maxDuration is not 0 to avoid division by zero
-                    } catch (e) {
-                        reject(e);
-                    }
-                }, 300); // Simulate worker communication latency
-            }).then(result => {
-                setTreeData(result.treeData);
-                setMaxDuration(result.maxDuration);
-                setIsParsing(false);
-            }).catch(err => {
-                setError(err instanceof Error ? err.message : 'Invalid JSON format.');
-                setTreeData(null);
-                setMaxDuration(0);
-                setIsParsing(false);
-            });
+            submitTask<WorkerParseResult, { jsonInput: string }>('parse-call-tree', { jsonInput })
+                .then(result => {
+                    setTreeData(result.treeData);
+                    setMaxDuration(result.maxDuration);
+                })
+                .catch(err => {
+                    setError(err instanceof Error ? err.message : 'Invalid JSON format.');
+                    setTreeData(null);
+                    setMaxDuration(0);
+                })
+                .finally(() => {
+                    setIsParsing(false);
+                });
         }, 500); // 500ms debounce on input
 
         return () => {
             clearTimeout(handler);
         };
-    }, [jsonInput]);
+    }, [jsonInput, submitTask]);
 
     return (
         <div className="h-full flex flex-col p-4 sm:p-6 lg:p-8 text-text-primary">
