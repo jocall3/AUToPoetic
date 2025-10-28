@@ -1,33 +1,30 @@
-import React, { createContext, useContext, useMemo, ReactNode } from 'react';
-import { useLocalStorage } from '../../hooks/useLocalStorage';
+import React, { createContext, useContext, useMemo, ReactNode, useCallback } from 'react';
+import { useGlobalState } from '../../contexts/GlobalStateContext';
 
 /**
  * @file VaultProvider.tsx
- * @description This module provides a simplified Vault context for managing the user-provided Gemini API key.
- * It replaces the previous master password-based vault system to streamline the user experience,
- * allowing AI features to be used as long as a Gemini API key is provided by the user.
+ * @description This module provides the Vault context as a compatibility layer.
+ * It bridges components still using `useVault` to the new centralized `GlobalStateContext`
+ * where the Gemini API key is now managed.
  *
  * @module components/vault/VaultProvider
  *
  * @security
- * This implementation stores the Gemini API key in the browser's `localStorage`.
- * While this fulfills the user's requirement for a client-side API key slot, it is a
- * significant security risk. API keys stored in `localStorage` can be accessed by any
- * JavaScript running on the page, making them vulnerable to Cross-Site Scripting (XSS) attacks.
- * The architectural directive to manage secrets server-side via an AuthGateway is the recommended
- * secure approach. This client-side implementation should be considered a temporary or
- * development-only solution.
+ * The Gemini API key is managed by `GlobalStateContext`, which persists the key to the browser's
+ * `localStorage`. This is a security risk and is intended only as a temporary or development-only
+ * solution, pending the full implementation of the server-side AuthGateway for secret management.
+ * API keys in `localStorage` are vulnerable to Cross-Site Scripting (XSS) attacks.
  *
  * @performance
- * Performance impact is minimal. It uses `useLocalStorage`, which involves a single synchronous read
- * on initialization and asynchronous writes on change.
+ * Performance impact is minimal. This provider reads from the global state context and re-renders
+ * only when the relevant part of the global state (`geminiApiKey`) changes.
  */
 
 /**
  * Defines the shape of the data and functions provided by the VaultContext.
  * @interface VaultContextType
  * @property {string | null} geminiApiKey - The user-provided Gemini API key. Null if not set.
- * @property {(key: string | null) => void} setGeminiApiKey - Function to set or clear the Gemini API key.
+ * @property {(key: string | null) => void} setGeminiApiKey - Function to set or clear the Gemini API key in the global state.
  * @property {boolean} isVaultUnlocked - A boolean indicating if the vault is considered 'unlocked', which is true if the Gemini API key is present.
  */
 interface VaultContextType {
@@ -49,18 +46,25 @@ interface VaultProviderProps {
 
 /**
  * @component VaultProvider
- * @description Provides the vault context to its children, managing the state of the Gemini API key.
- * This provider removes the need for a master password, simplifying the app's flow to just require a Google Sign-In
- * and a user-provided API key for AI features to function.
+ * @description Provides the vault context to its children by sourcing state from the centralized `GlobalStateContext`.
+ * This component acts as an adapter to support legacy components that use the `useVault` hook while centralizing
+ * state management for the Gemini API key.
  * @param {VaultProviderProps} props - The component props.
  * @returns {React.ReactElement} The provider component wrapping its children.
  * @example
- * <VaultProvider>
- *   <App />
- * </VaultProvider>
+ * <GlobalStateProvider>
+ *   <VaultProvider>
+ *     <App />
+ *   </VaultProvider>
+ * </GlobalStateProvider>
  */
 export const VaultProvider: React.FC<VaultProviderProps> = ({ children }) => {
-  const [geminiApiKey, setGeminiApiKey] = useLocalStorage<string | null>('gemini_api_key', null);
+  const { state, dispatch } = useGlobalState();
+  const { geminiApiKey } = state.preferences;
+
+  const setGeminiApiKey = useCallback((key: string | null) => {
+    dispatch({ type: 'SET_GEMINI_API_KEY', payload: key });
+  }, [dispatch]);
 
   const isVaultUnlocked = useMemo(() => !!geminiApiKey, [geminiApiKey]);
 
