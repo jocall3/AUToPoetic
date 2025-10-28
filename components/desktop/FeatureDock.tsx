@@ -80,7 +80,7 @@ export const FeatureDock: React.FC<FeatureDockProps> = ({ onLaunch }) => {
           role="alert"
           className="flex items-center justify-center h-full text-text-secondary"
         >
-          <p>Error loading features: {error}</p>
+          <p>Error loading features: {String(error)}</p>
         </div>
       );
     }
