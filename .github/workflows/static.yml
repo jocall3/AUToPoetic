@@ -51,14 +51,19 @@ jobs:
       - name: Build packages
         run: |
           for pkg in packages/*; do
-            echo "Building $pkg..."
-            if pnpm --filter "$pkg" run build; then
-              echo "$pkg build succeeded"
+           if [[ -f "$pkg/package.json" ]]; then
+            name=$(jq -r .name "$pkg/package.json")
+            echo "Building $name..."
+            if pnpm --filter "$name" run build; then
+             echo "$name build succeeded"
             else
-              echo "$pkg build failed, skipping artifact upload"
-            fi
-          done
-
+             echo "$name build failed, skipping artifact upload"
+              fi
+            else
+             echo "Skipping $pkg, no package.json found"
+              fi
+            done
+            
       # 8. Collect all dist folders for Pages
       - name: Collect dist for Pages
         run: |
