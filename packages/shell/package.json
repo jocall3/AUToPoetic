@@ -13,7 +13,7 @@
     "@apollo/client": "^3.10.1",
     "@devcore/composite-ui": "workspace:*",
     "@devcore/core-ui": "workspace:*",
-    "@devcore/orchestration": "workspace:*",
+    "@devcore/orchestration": "",
     "@devcore/theme-engine": "workspace:*",
     "@devcore/worker-pool": "workspace:*",
     "graphql": "^16.8.1",
