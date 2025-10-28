@@ -2,7 +2,7 @@ name: Build and Deploy Static Site
 
 on:
   push:
-    branches: ["autocommit-all"]  # <- correct branch
+    branches: ["autocommit-all"]  # correct branch
   workflow_dispatch:
 
 permissions:
@@ -27,13 +27,13 @@ jobs:
           echo "GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}" >> $GITHUB_ENV
           echo "Gemini API key is set"
 
-      # 3. Set GitHub PAT for private packages
+      # 3. Configure GitHub PAT for private packages
       - name: Configure GitHub Token for private packages
         run: |
           echo "//npm.pkg.github.com/:_authToken=${{ secrets.GH_PAT }}" > ~/.npmrc
           echo "GitHub PAT configured"
 
-      # 4. Setup  pnpm
+      # 4. Setup pnpm
       - name: Setup pnpm
         uses: pnpm/action-setup@v3
         with:
