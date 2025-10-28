@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Redirecting...</title>
+  <script type="text/javascript">
+    // Store the full path that led to the 404 page in session storage.
+    const path = sessionStorage.getItem('path');
+    if (path) {
+      sessionStorage.removeItem('path');
+      window.history.replaceState(null, null, path);
+    } else {
+      const redirectPath = window.location.pathname + window.location.search + window.location.hash;
+      sessionStorage.setItem('redirectPath', redirectPath);
+    }
+  </script>
+  <!-- Redirect to the root of the site, where index.html lives -->
+  <meta http-equiv="refresh" content="0; url=/AUToPoetic/">
+</head>
+<body>
+  <p>If you are not redirected automatically, follow this <a href="/AUToPoetic/">link to the home page</a>.</p>
+</body>
+</html>

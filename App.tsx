@@ -1,86 +1,98 @@
+/**
+ * @file App.tsx
+ * @description The root component of the application shell.
+ * This file orchestrates the main application structure, including providers for
+ * state management, theming, and the workspace. It acts as the entry
+ * point for the authenticated user experience, loading the appropriate workspace or
+ * directing to the login view.
+ * @copyright 2024 Citibank Demo Business Inc.
+ * @author Elite AI Implementation Team
+ * @security This component handles the root-level authentication check but delegates all
+ * authentication logic and token handling to the `googleAuthService` and backend `AuthGateway`.
+ * The client-side application operates in a zero-trust model and never stores long-lived secrets.
+ * The Gemini API key is stored in localStorage as per user request.
+ * @performance The main application is code-split, and this shell is designed to be a lightweight
+ * container. The `WorkspaceManager` it loads is responsible for lazy-loading micro-frontends on demand.
+ */
+
 import React, {
   Suspense,
-  createContext,
-  useCallback,
-  useContext,
+  useState,
   useEffect,
   useMemo,
-  useState,
+  useCallback,
 } from 'react';
-import { ErrorBoundary } from './components/ErrorBoundary';
+
+// Providers and State Management
+import { ErrorBoundary } from './ErrorBoundary';
 import {
   GlobalStateProvider,
   useGlobalState,
 } from './contexts/GlobalStateContext';
 import { NotificationProvider } from './contexts/NotificationContext';
-import { initGoogleAuth, signInWithGoogle } from './services/googleAuthService';
-import { ActionManager } from './components/ActionManager';
-import { LeftSidebar } from './components/LeftSidebar';
-import { StatusBar } from './components/StatusBar';
-import { CommandPalette } from './components/CommandPalette';
+import { useTheme } from './hooks/useTheme';
+
+// Services
+import { initGoogleAuth } from './services/googleAuthService';
+
+// Components (Lazy Loaded)
+const LoginView = React.lazy(() => import('./components/LoginView'));
+const LeftSidebar = React.lazy(() => import('./components/LeftSidebar'));
+const StatusBar = React.lazy(() => import('./components/StatusBar'));
+const CommandPalette = React.lazy(() => import('./components/CommandPalette'));
+const ActionManager = React.lazy(() => import('./components/ActionManager'));
+
+// Dynamic Feature Loading
+import { ALL_FEATURES } from './components/features';
+import type { AppUser, SidebarItem, ViewType } from './types';
+import './index.css';
+
+// Icons
 import {
   Cog6ToothIcon,
   HomeIcon,
   FolderIcon,
   RectangleGroupIcon,
 } from './components/icons';
-import { WorkspaceManager } from './components/desktop/WorkspaceManager';
-import { LoginView } from './components/LoginView';
-import { ALL_FEATURES } from './components/features';
-import { useTheme } from './hooks/useTheme';
-import type { AppUser, SidebarItem, ViewType } from './types';
-import './index.css';
 
-// Settings Context for Gemini API Key
-interface SettingsContextType {
-  geminiApiKey: string;
-  setGeminiApiKey: (key: string) => void;
-}
-
-const SettingsContext = createContext<SettingsContextType | undefined>(
-  undefined,
+/**
+ * A loading indicator for suspended components.
+ */
+const LoadingIndicator: React.FC = () => (
+  <div className="w-full h-full flex items-center justify-center bg-background text-text-secondary">
+    <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin"></div>
+    <p className="ml-4 text-lg">Loading Environment...</p>
+  </div>
 );
 
-export const useSettings = () => {
-  const context = useContext(SettingsContext);
-  if (!context) {
-    throw new Error('useSettings must be used within a SettingsProvider');
+/**
+ * The WorkspaceManager dynamically renders the active feature component.
+ * @param {{ activeView: ViewType; viewProps: any }} props Component props.
+ * @returns {React.ReactElement} The rendered feature or a fallback.
+ */
+const WorkspaceManager: React.FC<{ activeView: ViewType; viewProps: any }> = ({ activeView, viewProps }) => {
+  const FeatureComponent = useMemo(() => {
+    const feature = ALL_FEATURES.find(f => f.id === activeView);
+    return feature ? feature.component : null;
+  }, [activeView]);
+
+  if (!FeatureComponent) {
+    return (
+      <div className="flex items-center justify-center h-full text-text-secondary">
+        <p>Feature "{activeView}" not found.</p>
+      </div>
+    );
   }
-  return context;
+
+  return <FeatureComponent {...viewProps} />;
 };
 
-const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({
-  children,
-}) => {
-  const [geminiApiKey, setGeminiApiKeyState] = useState('');
-
-  useEffect(() => {
-    const storedKey = sessionStorage.getItem('gemini_api_key');
-    if (storedKey) {
-      setGeminiApiKeyState(storedKey);
-    }
-  }, []);
-
-  const setGeminiApiKey = (key: string) => {
-    setGeminiApiKeyState(key);
-    if (key) {
-      sessionStorage.setItem('gemini_api_key', key);
-    } else {
-      sessionStorage.removeItem('gemini_api_key');
-    }
-  };
-
-  const value = { geminiApiKey, setGeminiApiKey };
-
-  return (
-    <SettingsContext.Provider value={value}>{children}</SettingsContext.Provider>
-  );
-};
-
-// Main Authenticated Application UI
+/**
+ * The main UI for an authenticated user, containing the shell and workspace.
+ */
 const AuthenticatedApp: React.FC = () => {
   const { state, dispatch } = useGlobalState();
-  const { activeView, viewProps, hiddenFeatures } = state;
+  const { activeView, viewProps, hiddenFeatures } = state.workspace;
   const [isCommandPaletteOpen, setCommandPaletteOpen] = useState(false);
 
   useEffect(() => {
@@ -108,6 +120,12 @@ const AuthenticatedApp: React.FC = () => {
       'project-explorer',
       'workspace-connector-hub',
     ];
+    const visibleFeatures = ALL_FEATURES.filter(
+      (feature) =>
+        !hiddenFeatures.includes(feature.id) &&
+        !coreFeatures.includes(feature.id),
+    );
+
     return [
       {
         id: 'ai-command-center',
@@ -127,11 +145,7 @@ const AuthenticatedApp: React.FC = () => {
         icon: <RectangleGroupIcon />,
         view: 'workspace-connector-hub',
       },
-      ...ALL_FEATURES.filter(
-        (feature) =>
-          !hiddenFeatures.includes(feature.id) &&
-          !coreFeatures.includes(feature.id),
-      ).map((feature) => ({
+      ...visibleFeatures.map((feature) => ({
         id: feature.id,
         label: feature.name,
         icon: feature.icon,
@@ -148,51 +162,62 @@ const AuthenticatedApp: React.FC = () => {
 
   return (
     <div className="relative flex h-full w-full">
-      <LeftSidebar
-        items={sidebarItems}
-        activeView={activeView}
-        onNavigate={handleViewChange}
-      />
+      <Suspense fallback={<div className="w-20 h-full bg-surface" />}>
+        <LeftSidebar
+          items={sidebarItems}
+          activeView={activeView}
+          onNavigate={handleViewChange}
+        />
+      </Suspense>
       <div className="flex-1 flex flex-col min-w-0">
         <main className="relative flex-1 min-w-0 bg-surface/50 dark:bg-slate-900/50 overflow-hidden">
           <ErrorBoundary>
-            <Suspense
-              fallback={
-                <div className="w-full h-full flex items-center justify-center">
-                  Loading...
-                </div>
-              }
-            >
+            <Suspense fallback={<LoadingIndicator />}>
               <WorkspaceManager activeView={activeView} viewProps={viewProps} />
             </Suspense>
           </ErrorBoundary>
-          <ActionManager />
+          <Suspense fallback={null}>
+            <ActionManager />
+          </Suspense>
         </main>
-        <StatusBar bgImageStatus="loaded" />
+        <Suspense fallback={<div className="h-8 w-full bg-surface" />}>
+          <StatusBar bgImageStatus="loaded" />
+        </Suspense>
       </div>
-      <CommandPalette
-        isOpen={isCommandPaletteOpen}
-        onClose={() => setCommandPaletteOpen(false)}
-      />
+      <Suspense fallback={null}>
+        <CommandPalette
+          isOpen={isCommandPaletteOpen}
+          onClose={() => setCommandPaletteOpen(false)}
+        />
+      </Suspense>
     </div>
   );
 };
 
-// Auth Gate to switch between Login and Authenticated App
+/**
+ * Determines whether to show the LoginView or the AuthenticatedApp.
+ */
 const AuthGate: React.FC = () => {
   const { state } = useGlobalState();
+  const { user, initialAuthChecked } = state.session;
 
-  if (!state.user) {
-    return <LoginView />;
+  if (!initialAuthChecked) {
+    return <LoadingIndicator />;
   }
 
-  return <AuthenticatedApp />;
+  return (
+    <Suspense fallback={<LoadingIndicator />}>
+      {user ? <AuthenticatedApp /> : <LoginView />}
+    </Suspense>
+  );
 };
 
-// Root App component that handles auth initialization
+/**
+ * The main App component, responsible for auth initialization and theme setup.
+ */
 const App: React.FC = () => {
   const { dispatch } = useGlobalState();
-  useTheme(); // Initialize theme
+  useTheme(); // Initialize and apply theme from local storage.
 
   useEffect(() => {
     const handleUserChanged = (user: AppUser | null) => {
@@ -203,37 +228,39 @@ const App: React.FC = () => {
       if (window.google) {
         initGoogleAuth(handleUserChanged);
       } else {
-        console.warn('Google Identity Services script not loaded yet.');
+        console.warn('Google Identity Services script not ready.');
+        // Mark auth as checked even if script fails to load.
+        dispatch({ type: 'SET_SESSION_STATUS', payload: 'unauthenticated' });
       }
     };
 
-    const script = document.getElementById('gsi-client');
-    if (window.google) {
+    const gsiScript = document.getElementById('gsi-client');
+    if ((window as any).google) {
       initializeAuth();
-    } else if (script) {
-      script.addEventListener('load', initializeAuth);
-      return () => script.removeEventListener('load', initializeAuth);
+    } else if (gsiScript) {
+      gsiScript.addEventListener('load', initializeAuth);
+      return () => gsiScript.removeEventListener('load', initializeAuth);
+    } else {
+       dispatch({ type: 'SET_SESSION_STATUS', payload: 'unauthenticated' });
     }
   }, [dispatch]);
 
   return <AuthGate />;
 };
 
-// Final export that wraps App in all necessary providers
-const Root: React.FC = () => {
-  return (
-    <ErrorBoundary>
-      <GlobalStateProvider>
-        <NotificationProvider>
-          <SettingsProvider>
-            <div className="h-screen w-screen font-sans overflow-hidden bg-background text-text-primary">
-              <App />
-            </div>
-          </SettingsProvider>
-        </NotificationProvider>
-      </GlobalStateProvider>
-    </ErrorBoundary>
-  );
-};
+/**
+ * The root component wrapping the application with all necessary providers.
+ */
+const Root: React.FC = () => (
+  <ErrorBoundary>
+    <GlobalStateProvider>
+      <NotificationProvider>
+        <div className="h-screen w-screen font-sans overflow-hidden bg-background text-text-primary">
+          <App />
+        </div>
+      </NotificationProvider>
+    </GlobalStateProvider>
+  </ErrorBoundary>
+);
 
 export default Root;

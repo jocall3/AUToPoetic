@@ -1,138 +1,85 @@
 /**
- * @file Vite configuration for the shell application.
- * @description This configuration sets up the Vite development server and build process.
- * It includes settings for:
- * - **React Plugin**: Enables Fast Refresh and other React-specific optimizations.
- * - **Module Federation**: Configures this application as the "shell" or "host" in a micro-frontend architecture,
- *   defining remote applications and shared dependencies. This is crucial for the architectural transformation.
- * - **Server Proxy**: Proxies GraphQL API requests to the Backend-for-Frontend (BFF) during local development.
- * - **Environment Variables**: Safely exposes public environment variables to the client-side code.
- * - **Build Optimizations**: Configures build output directory, source maps, and chunking strategies for performance.
- * - **Web Worker Support**: Ensures web workers are bundled correctly.
- *
- * @see {@link https://vitejs.dev/config/}
- * @see {@link https://github.com/originjs/vite-plugin-federation}
- * @performance Manually chunking node_modules improves caching and initial load performance by separating vendor code.
- * @security Environment variables are loaded from `.env` files and only explicitly defined public keys are exposed to the client.
- *           The dev server's CORS is disabled to prevent certain cross-origin request vulnerabilities.
- *           The server proxy isolates the frontend from the backend's direct address in the client code.
+ * @file Vite configuration for the shell application (GitHub Pages ready)
+ * @description This configuration is for the root application (shell) and includes
+ *              comprehensive path aliasing to support the monorepo structure and fix
+ *              module resolution errors during the build process. It is configured for a
+ *              static build suitable for deployment on GitHub Pages.
  */
 
 import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
-import federation from '@originjs/vite-plugin-federation';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-
-// List of micro-frontend remotes
-// In a real-world scenario, these URLs might be managed via environment variables.
-const remotes = {
-    aiCodeExplainer: 'http://localhost:5001/assets/remoteEntry.js',
-    projectExplorer: 'http://localhost:5002/assets/remoteEntry.js',
-    themeDesigner: 'http://localhost:5003/assets/remoteEntry.js',
-    // Add other micro-frontends as they are developed
-};
-
+// ESM-compatible __dirname
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 export default defineConfig(({ mode }) => {
-    // Load env file based on `mode` in the current working directory.
-    // Set the third parameter to '' to load all env regardless of the `VITE_` prefix.
     const env = loadEnv(mode, process.cwd(), '');
 
     return {
-        plugins: [
-            react(),
-            federation({
-                name: 'shell',
-                filename: 'remoteEntry.js',
-                remotes,
-                shared: ['react', 'react-dom'],
-            }),
-        ],
-        /**
-         * Configuration for the Vite development server.
-         */
-        server: {
-            port: 5000,
-            // Disable CORS. In a micro-frontend setup, this can be important, but
-            // requires careful consideration of security implications.
-            cors: false,
-            // Proxy API requests to the BFF during development.
-            // This avoids CORS issues and mimics a production environment where the
-            // frontend and BFF might be served from the same domain.
-            proxy: {
-                '/graphql': {
-                    target: 'http://localhost:4000', // URL of the BFF service
-                    changeOrigin: true,
-                    secure: false,
-                },
-            },
-        },
-        /**
-         * Defines global constants for the client-side code.
-         * Only public, non-sensitive keys should be exposed here.
-         */
-        define: {
-            // Exposing the public Google Client ID for the OAuth flow.
-            // All other secrets (API keys, etc.) are managed server-side by the AuthGateway and BFF.
-            'process.env.GOOGLE_CLIENT_ID': JSON.stringify(env.GOOGLE_CLIENT_ID),
-        },
-        /**
-         * Configuration for module resolution.
-         */
+        // Set the base path for GitHub Pages deployment under the /AUToPoetic/ repository.
+        base: '/AUToPoetic/',
+
+        plugins: [react()],
+
         resolve: {
             alias: {
-                // Allows for cleaner import paths, e.g., `import '@/components/...'`
-                '@': path.resolve(__dirname, '.'),
+                // Aliases for root-level directories to match tsconfig.json and fix resolution issues
+                '@/components': path.resolve(__dirname, './components'),
+                '@/contexts': path.resolve(__dirname, './contexts'),
+                '@/hooks': path.resolve(__dirname, './hooks'),
+                '@/services': path.resolve(__dirname, './services'),
+                '@/types': path.resolve(__dirname, './types.ts'),
+                '@/utils': path.resolve(__dirname, './utils'),
+                '@/workers': path.resolve(__dirname, './workers'),
+                '@/public': path.resolve(__dirname, './public'),
+
+                // Aliases to fix incorrect hypothetical paths seen in various component imports
+                '@/ui/composite': path.resolve(__dirname, './packages/ui-composite/src'),
+                '@/ui/core': path.resolve(__dirname, './packages/ui-core/src'),
+
+                // Aliases for monorepo packages to ensure they resolve correctly during the build
+                '@devcore/auth-client': path.resolve(__dirname, './packages/auth-client/src'),
+                '@devcore/orchestration': path.resolve(__dirname, './packages/orchestration/src'),
+                '@devcore/theme-engine': path.resolve(__dirname, './packages/theme-engine/src'),
+                '@devcore/composite-ui': path.resolve(__dirname, './packages/ui-composite/src'),
+                '@devcore/core-ui': path.resolve(__dirname, './packages/ui-core/src'),
+                '@devcore/worker-pool': path.resolve(__dirname, './packages/worker-pool/src'),
             },
         },
-        /**
-         * Configuration for dependency pre-bundling.
-         */
-        optimizeDeps: {
-            exclude: [
-                'axe-core',
-                // @google/genai is no longer used on the client-side.
-                // Keeping the exclusion is harmless but it could be removed.
-                '@google/genai'
-            ],
+
+        define: {
+            'process.env.GOOGLE_CLIENT_ID': JSON.stringify(env.GOOGLE_CLIENT_ID),
         },
-        /**
-         * Configuration for the build process.
-         */
+
+        optimizeDeps: {
+            exclude: ['axe-core', '@google/genai'],
+        },
+
         build: {
-            target: 'esnext', // Target modern browsers for performance.
-            outDir: 'dist/shell', // Output to a specific directory for the shell app.
-            sourcemap: true, // Enable source maps for production debugging.
+            target: 'esnext',
+            outDir: 'dist', // Standard output directory for the shell application build
+            sourcemap: true,
             rollupOptions: {
                 output: {
-                    /**
-                     * Improves caching by splitting vendor code into separate chunks.
-                     * Large libraries that change infrequently are cached independently.
-                     * @param {string} id - The module ID.
-                     * @returns {string | undefined} The chunk name.
-                     */
-                    manualChunks(id: string): string | undefined {
+                    // Manual chunking strategy to group common libraries for better caching
+                    manualChunks(id: string) {
                         if (id.includes('node_modules')) {
-                            // Group major libraries into their own chunks
                             if (id.includes('react')) return 'vendor-react';
                             if (id.includes('marked')) return 'vendor-marked';
                             if (id.includes('mermaid')) return 'vendor-mermaid';
                             if (id.includes('idb')) return 'vendor-idb';
-                            // Group other node_modules into a generic vendor chunk
-                            return 'vendor';
+                            return 'vendor'; // All other node_modules
                         }
                     },
                 },
             },
         },
-        /**
-         * Configuration for Web Workers.
-         */
+
         worker: {
-            format: 'es', // Use modern ES module format for workers.
+            format: 'es',
         },
     };
 });

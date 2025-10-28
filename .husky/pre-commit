@@ -1,0 +1,46 @@
+#!/usr/bin/env sh
+. "$(dirname -- "$0")/_/husky.sh"
+
+echo "Husky: Running pre-commit hooks..."
+
+# 1. Run Type Check
+# Enforces the tsconfig.base.json and project-specific configs.
+echo "Husky: Running TypeScript type check across the monorepo..."
+pnpm typecheck
+TYPECHECK_EXIT_CODE=$?
+
+if [ $TYPECHECK_EXIT_CODE -ne 0 ]; then
+  echo "Husky: TypeScript check failed. Please fix the type errors before committing."
+  exit 1
+fi
+echo "Husky: TypeScript check passed."
+
+# 2. Run Linter
+# Enforces the shared .eslintrc.json configuration.
+echo "Husky: Running linter..."
+pnpm lint
+LINT_EXIT_CODE=$?
+
+if [ $LINT_EXIT_CODE -ne 0 ]; then
+  echo "Husky: Linting failed. Please fix the linting errors before committing."
+  echo "Husky: You may be able to fix some issues by running 'pnpm lint:fix'."
+  exit 1
+fi
+echo "Husky: Linting passed."
+
+# 3. Run Formatter Check
+# Enforces the shared Prettier configuration.
+echo "Husky: Running formatter check..."
+# Using exec because there's no dedicated 'format:check' script.
+# This prevents the hook from automatically changing files, which is good practice.
+pnpm exec prettier --check "**/*.{ts,tsx,json,md,css}"
+FORMAT_EXIT_CODE=$?
+
+if [ $FORMAT_EXIT_CODE -ne 0 ]; then
+  echo "Husky: Formatting check failed. Please run 'pnpm format' to fix the files."
+  exit 1
+fi
+echo "Husky: Formatting check passed."
+
+echo "Husky: Pre-commit hooks passed! Proceeding with commit."
+exit 0
