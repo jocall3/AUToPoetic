@@ -1,6 +1,6 @@
 {
   "name": "@devcore/auth-client",
-  "version": "",
+  "version": "1.0.0",
   "private": false,
   "description": "Client-side library for interacting with the AuthGateway microservice. Handles OIDC flows and JWT management for federated micro-frontends.",
   "main": "./dist/index.js",
