@@ -32,7 +32,7 @@
     "winston": "^3.13.0",
     "@octokit/rest": "^21.0.0",
     "@octokit/types": "^14.1.0",
-    "@devcore/auth-client": "^1.0.0",
+    "@devcore/auth-client": "workspace:*",
     "react": "18.2.0",
     "react-dom": "18.2.0"
   },
