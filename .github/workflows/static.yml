@@ -2,95 +2,54 @@ name: Build and Deploy AUToPoetic
 
 on:
   push:
-    branches: ["autocommit-all"]
-  workflow_dispatch:
-
-permissions:
-  contents: read
-  pages: write
-  id-token: write
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
 
 jobs:
-  build-and-deploy:
+  build:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
 
     steps:
-      # 1. Checkout repo
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      # Checkout the repo
+      - name: Checkout Repository
+        uses: actions/checkout@v3
+
+      # Setup Node
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
         with:
-          persist-credentials: false
+          node-version: 20
+          cache: 'pnpm'
 
-      # 2. Set environment variables
-      - name: Set environment variables
+      # Install pnpm
+      - name: Install pnpm
+        run: npm install -g pnpm
+
+      # Install dependencies with hoisting (fixes missing vite plugins)
+      - name: Install Dependencies
+        run: pnpm install --shamefully-hoist
+
+      # Build shell package (ignoring TS errors)
+      - name: Build Shell Package
+        working-directory: packages/shell
         run: |
-          echo "GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}" >> $GITHUB_ENV
-          echo "//npm.pkg.github.com/:_authToken=${{ secrets.GH_PAT }}" > ~/.npmrc
+          # Compile TS but ignore errors
+          tsc --noEmit || true
+          # Build Vite
+          pnpm run build
 
-      # 3. Setup pnpm
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v3
-        with:
-          version: 10
+      # Optional: build all packages in workspace
+      - name: Build All Packages
+        run: pnpm -r run build --filter "...>"
 
-      # 4. Install dependencies
-      - name: Install dependencies
-        run: pnpm install --no-frozen-lockfile
-
-      # 5. Ensure tsconfig.json exists for each package
-      - name: Ensure tsconfig.json
-        run: |
-          for pkg in packages/*; do
-            [[ -f "$pkg/tsconfig.json" ]] || echo '{"compilerOptions":{"target":"ESNext","module":"ESNext","jsx":"react-jsx","declaration":true,"outDir":"dist","strict":true,"skipLibCheck":true},"include":["src","../../components","../../services"]}' > "$pkg/tsconfig.json"
-            mkdir -p "$pkg/dist"
-          done
-
-      # 6. Build all packages individually
-      - name: Build all packages
-        run: |
-          for pkg in packages/*; do
-            if [[ -f "$pkg/package.json" ]]; then
-              name=$(jq -r .name "$pkg/package.json")
-              echo "Building $name..."
-              if pnpm --filter "$name" run build; then
-                echo "$name build succeeded"
-              else
-                echo "$name build failed, skipping artifact upload"
-              fi
-            else
-              echo "Skipping $pkg, no package.json found"
-            fi
-          done
-
-      # 7. Build @devcore/shell ignoring TypeScript errors
-      - name: Build @devcore/shell (ignore TS errors)
-        run: |
-          cd packages/shell
-          echo "Compiling TypeScript ignoring errors..."
-          pnpm exec tsc --noEmit || echo "TS errors ignored"
-          echo "Running Vite build..."
-          pnpm exec vite build
-          cd ../..
-
-      # 8. Collect all dist folders
-      - name: Collect dist for Pages
-        run: |
-          mkdir -p all-dist
-          for pkg in packages/*; do
-            if [[ -d "$pkg/dist" ]]; then
-              cp -r "$pkg/dist/." all-dist/
-            fi
-          done
-
-      # 9. Upload Pages artifact
-      - name: Upload Pages artifact
-        uses: actions/upload-pages-artifact@v3
-        with:
-          path: all-dist
-
-      # 10. Deploy to GitHub Pages
-      - name: Deploy to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v4
-        with:
-          artifact-path: all-dist
+      # Optional: deploy to GitHub Pages or static hosting
+      # - name: Deploy Pages
+      #   uses: actions/deploy-pages@v1
+      #   with:
+      #     token: ${{ secrets.GITHUB_TOKEN }}
