@@ -1,55 +1,49 @@
-name: Build and Deploy AUToPoetic
+name: Deploy static Vite app to GitHub Pages
 
 on:
   push:
-    branches:
-      - autocommit-all
-  pull_request:
-    branches:
-      - autocommit-all
+    branches: ["autocommit-all"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        shell: bash
-
     steps:
-      # Checkout the repo
-      - name: Checkout Repository
-        uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
-      # Setup Node
-      - name: Setup Node.js
-        uses: actions/setup-node@v3
+      - uses: actions/setup-node@v4
         with:
-          node-version: 20
-          cache: 'pnpm'
+          node-version: 22
 
-      # Install pnpm
-      - name: Install pnpm
-        run: npm install -g pnpm
+      - run: corepack enable
 
-      # Install dependencies with hoisting (fixes missing vite plugins)
-      - name: Install Dependencies
-        run: pnpm install --shamefully-hoist
+      - name: Install deps
+        run: pnpm install
 
-      # Build shell package (ignoring TS errors)
-      - name: Build Shell Package
-        working-directory: packages/shell
-        run: |
-          # Compile TS but ignore errors
-          tsc --noEmit || true
-          # Build Vite
-          pnpm run build
+      - name: Build
+        run: pnpm build
 
-      # Optional: build all packages in workspace
-      - name: Build All Packages
-        run: pnpm -r run build --filter "...>"
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: ./dist
 
-      # Optional: deploy to GitHub Pages or static hosting
-      # - name: Deploy Pages
-      #   uses: actions/deploy-pages@v1
-      #   with:
-      #     token: ${{ secrets.GITHUB_TOKEN }}
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@v4
