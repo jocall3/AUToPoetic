@@ -64,7 +64,7 @@ const exampleCode = `const bubbleSort = (arr) => {
     }
   }
   return arr;
-};`;
+};
 
 /**
  * Renders a specific panel for the AI Analysis tabs.
@@ -257,5 +257,4 @@ export const AiCodeExplainer: React.FC<AiCodeExplainerProps> = ({ initialCode })
       </Grid>
     </Box>
   );
-};
 };
