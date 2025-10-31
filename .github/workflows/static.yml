@@ -1,4 +1,4 @@
-name: Build and Deploy Static Site
+name: Build and Deploy AUToPoetic
 
 on:
   push:
@@ -26,7 +26,7 @@ jobs:
         run: echo "GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}" >> $GITHUB_ENV
 
       # 3. Set GitHub PAT for private packages
-      - name: Configure GitHub Token
+      - name: Configure GitHub Token for npm
         run: echo "//npm.pkg.github.com/:_authToken=${{ secrets.GH_PAT }}" > ~/.npmrc
 
       # 4. Setup pnpm
@@ -39,43 +39,59 @@ jobs:
       - name: Install dependencies
         run: pnpm install --no-frozen-lockfile
 
-      # 6. Ensure tsconfig exists
-      - name: Ensure tsconfig exists
+      # 6. Ensure tsconfig.json for each package
+      - name: Ensure package tsconfig.json
         run: |
           for pkg in packages/*; do
-            [[ -f "$pkg/tsconfig.json" ]] || echo '{"compilerOptions":{"target":"ESNext","module":"ESNext","jsx":"react-jsx","declaration":true,"outDir":"dist","strict":true,"skipLibCheck":true},"include":["src","../../components","../../services"]}' > "$pkg/tsconfig.json"
+            if [[ ! -f "$pkg/tsconfig.json" ]]; then
+              echo '{"compilerOptions":{"target":"ESNext","module":"ESNext","jsx":"react-jsx","declaration":true,"outDir":"dist","strict":true,"skipLibCheck":true},"include":["src","../../components","../../services"]}' > "$pkg/tsconfig.json"
+            fi
             mkdir -p "$pkg/dist"
           done
 
-      # 7. Compile each package with tsc
-      - name: Compile packages with tsc
+      # 7. Build all packages individually
+      - name: Build packages
         run: |
           for pkg in packages/*; do
             if [[ -f "$pkg/package.json" ]]; then
-              echo "Compiling $pkg with tsc..."
-              npx tsc --project "$pkg/tsconfig.json"
-            else
-              echo "Skipping $pkg, no package.json found"
+              name=$(jq -r .name "$pkg/package.json")
+              echo "Building $name..."
+              if pnpm --filter "$name" run build; then
+                echo "$name build succeeded"
+              else
+                echo "$name build failed, skipping"
+              fi
             fi
           done
 
-      # 8. Collect all dist folders for Pages
-      - name: Collect dist for Pages
+      # 8. Build shell app (Vite)
+      - name: Build Shell App
+        run: pnpm --filter @devcore/shell run build
+
+      # 9. Collect all outputs for Pages
+      - name: Collect build output
         run: |
           mkdir -p all-dist
+          # Root index.html
+          cp index.html all-dist/
+          # Public folder
+          cp -r public/* all-dist/
+          # Shell dist folder
+          cp -r packages/shell/dist/* all-dist/
+          # Packages dist folders
           for pkg in packages/*; do
             if [[ -d "$pkg/dist" ]]; then
               cp -r "$pkg/dist/." all-dist/
             fi
           done
 
-      # 9. Upload artifact
+      # 10. Upload Pages artifact
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
           path: all-dist
 
-      # 10. Deploy to GitHub Pages
+      # 11. Deploy to GitHub Pages
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
